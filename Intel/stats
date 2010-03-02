@@ -1,0 +1,33 @@
+#!/usr/intel/bin/perl
+#
+#  simply prints the number of unique states visitted in a log file
+#  by counting the totals reported by each worker...
+#  this is meant to be used while the job is running, since onces
+#  it's done the accurate state count can be read from the REPORT
+#  in the log.
+#
+#  usage:
+#   stats mymodel.log
+#
+
+my $log = shift;
+
+open(LOG,$log)  || die "could not open $log";
+my %state_counts;
+while (<LOG>) {
+  if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states explored in (\d+) s .* (\d+) states in the queue/) {
+    my $host = $1;
+    my $states = $2;
+    my $secs = $3;
+    my $q = $4;
+    $state_counts{$host} = $states;
+  }
+}
+
+close LOG;
+my $tot = 0;
+foreach my $c (values %state_counts) {
+  $tot += $c;
+}
+
+print "At least $tot unique states visitted so far.\n";

@@ -1,0 +1,17 @@
+Preach:
+
+** preach doesnt' always succesfully createa a cex in non-localmode (even after the symmetry reduction/cex fix)
+
+* in nonlocalmode, if an error happens the reported state count is 0
+
+* preach doesn't print rules that fired in a counterexample
+
+
+prun:
+
+* Mark fixed them all!  
+
+Makefile
+* can't figure out how to get preach.beam to depend on common.erl
+
+* really there should be two Makefiles, one to make preach and one to compile model.so (the latter can be symlinked from the run directory); right now Makefile serves both functions

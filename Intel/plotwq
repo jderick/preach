@@ -1,0 +1,133 @@
+#!/usr/intel/bin/perl
+#
+# A utility for plotting workqueue length against time from preach 
+# log file.
+# 
+# usage:
+# plotwq mymodel.log <args>
+#
+# this will create a file plotwq.eps, and also launch ghostview (gv)
+# on it.  The plot has x-axis being time (seconds) and y-axis
+# being wq length.  The hosts that are plotted are controlled by
+# <args>:
+#  
+#  * if <args> is empty, then a single host is picked at random
+#  * if <args> is a non-empty list of hosts, those hosts are
+#    plotted
+#  * if <args> is all, then all hosts are plotted
+#
+# This script assume gnuplot is in your path.
+#
+
+my $log = shift;
+#my $host = shift;
+my $gtemp = "g.temptemp";
+
+open(LOG,$log)  || die "could not open $log";
+my @all_hosts;
+my $random_host;
+
+my $root;
+if (1) {
+  while (<LOG>) {
+    if (/Starting worker thread on \w+\@(\w+) with PID (.*)/) {
+      my $host = "$1.$2";
+      chomp $host;
+      @all_hosts = (@all_hosts,$host);
+    }
+      if (/Sending tc to (.*)/) {
+         $tc{$1} = 1;
+      }
+      if (/Received ack from (.*)/) {
+         delete $tc{$1};
+      }
+  }
+} else {
+  while (<LOG>) {
+    if (/Executed on\s+:\s+(\w+)/) {
+      $root = $1;
+      last;
+    }
+  }
+  while (<LOG>) {
+    if (/NB_PARALLEL_JOB_HOSTS=(.+)/) {
+      @all_hosts = ($root,split(/ /,$1));
+      last;
+    }
+  }
+}
+#print join("\n",keys %tc); exit;
+
+#print join("\n",@all_hosts); exit;
+my @hosts;
+if (!@ARGV) {
+  my $i = int(rand()*(@hosts));
+  @hosts = ($hosts[$i]);
+} elsif ($ARGV[0] eq "all") {
+  @hosts = @all_hosts;
+} else {
+  @hosts = @ARGV;
+}
+
+#
+# remove duplicates from @hosts
+#
+my %hash   = map { $_, 1 } @hosts;	
+@hosts = keys %hash;
+
+my $eps = "plotwq.eps";
+#my $temp = "$host.gnuplot.data";
+#open(TEMP,">$temp")  || die "could not open $temp";
+
+my %data_files;
+foreach my $h (@hosts) {
+  my $temp = "$h.gnuplot.data";
+  open($data_files{$h},">$temp")  || die "could not open $temp";
+}
+
+close(LOG);
+open(LOG,$log)  || die "could not open $log";
+while (<LOG>) {
+  if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states explored in (\d+) s .* (\d+) states in the queue/) {
+    my $host = $1;
+    my $states = $2;
+    my $secs = $3;
+    my $q = $4;
+    if ($data_files{$host}) {
+       my $FH = $data_files{$host};
+       print $FH "$secs $q\n";
+    }
+  }
+}
+
+close LOG;
+foreach my $h (@hosts) {
+  close($data_files{$h});
+}
+
+open(GTEMP,">$gtemp")  || die "could not open $gtemp";
+print GTEMP "
+set nokey
+set terminal postscript color
+set data style lines
+set ylabel \"WQ size\"
+set xlabel \"Seconds\"
+plot \\
+"; 
+for (my $i=0;$i<@hosts;$i++) {
+  my $temp = $hosts[$i].".gnuplot.data";
+  print GTEMP "   \"$temp\" using 1:2";
+  print GTEMP ", \\" if $i < @hosts-1;
+  print GTEMP "\n";
+  
+}
+close GTEMP;
+
+system "gnuplot $gtemp > $eps";
+
+#unlink $temp;
+#unlink $gtemp;
+
+system "gv $eps &";
+
+
