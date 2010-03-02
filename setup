@@ -1,0 +1,17 @@
+# YOU MUST CONFIGURE THESE VARS PRIOR TO RUNNING
+
+setenv PREACH_ROOT ~/work/preach/
+setenv PREACH_SSH "ssh"
+setenv PREACH_TEMP /tmp
+
+setenv ERLANG_ROOT /some/path/to/otp_src_R13B03
+setenv BINDIR $ERLANG_ROOT/bin
+setenv PATH ${PATH}:${PREACH_ROOT}:${PREACH_ROOT}/Intel:${BINDIR}:${ERLANG_ROOT}/bin/x86_64-unknown-linux-gnu
+
+# REQUIRED FOR NETBATCH
+#setenv PREACH_SLOT /slot
+#setenv PREACH_QUEUE queue
+#setenv PREACH_CLASS SLES_class_nosusp
+
+rehash
+#ln -f -s $PREACH_ROOT/Makefile Makefile
