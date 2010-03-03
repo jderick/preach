@@ -82,7 +82,7 @@ n4@host7435
 
 Then run 
 
-erl  -rsh ssh -sname foo -pa $PREACH_ROOT  -run preach run -model test1 
+erl  -rsh ssh -sname foo -pa $PREACH_ROOT  -run preach run -model blah
 
 Caveats........................................................................
 
