@@ -4,6 +4,27 @@ run() ->
     start(length(hosts())).
 
 
+makeLink([], _Args) -> ok;
+
+makeLink([Host | Rest], Args) ->
+	S = re:split(atom_to_list(Host), "[@]", [{return, list}]),
+	% BRAD: The BIF tl/1 is awful
+	Machine = list_to_atom(lists:nth(1,tl(S))),
+	Name = list_to_atom(hd(S)),
+	io:format("For sanity: Machine: ~w, Name: ~w~n", [Machine,Name]),	
+    case slave:start_link(Machine, Name, Args) of
+	{ok, Node} ->
+	    io:format("Erlang node started = [~p]~n", [Node]),
+		makeLink(Rest, Args);
+	{error,timeout} ->
+	    io:format("Could not connect to host ~w...Exiting~n",[Host]),
+	    halt();
+	{error,Reason} ->
+	    io:format("Could not start workers: Reason= ~w...Exiting~n",[Reason]),
+	    halt()
+	end.
+
+
 %%----------------------------------------------------------------------
 %% Function: start/1
 %% Purpose : A timing wrapper for the parallel version of our model checker.
@@ -15,10 +36,24 @@ run() ->
 start(P) ->
     io:format("PReach $Rev: 408 $~n", []),
     T0 = now(),
+    Local = is_localMode(),
+    if Local ->
+	    ok;
+       true ->
+	    Args = "-pa " ++ os:getenv("PREACH_ROOT") ++ " -model " ++ model_name(),
+	    makeLink(hosts(), Args),
+	    %% invalidate nfs cache to ensure latest beam files are loaded
+	    Rand = integer_to_list(random:uniform(1000000000)),
+	    lists:map(
+	      fun(X) ->
+		      rpc:call(X, os, cmd, ["echo " ++ Rand ++ " > " ++ os:getenv("PREACH_ROOT") ++ "/nfsinval"])
+	      end,
+	      hosts())
+    end,
     Names = initThreads([], P),
     lists:map(fun(X) -> X ! {trace_handler, self()} end, tuple_to_list(Names)),
     lists:map(fun(X) -> X ! {terminator, self()} end, tuple_to_list(Names)),
-    murphi_interface:start(model_name()),
+    murphi_interface:start(os:getenv("PWD"), model_name()),
     io:format("About to compute startstates... ~n",[]),
     SS = startstates(),
     case SS of 

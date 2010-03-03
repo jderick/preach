@@ -1,5 +1,5 @@
 -module(murphi_interface).
--export([start/1, stop/0, init/1]).
+-export([start/2, stop/0, init/1]).
 -export([startstates/0, nextstates/1, checkInvariants/1, stateToString/1,
 	     is_p_state/1, is_q_state/1, has_cangetto/0, print_diff/2,fasthash/1,
          normalize/1,fireRule/2,rulenumToName/1, startstateToName/1, brad_hash/1,
@@ -7,15 +7,17 @@
          equivalentStates/2, numberOfHashCollisions/0 ]).
 
 
-start(SharedLib) ->
-    case erl_ddll:try_load(".", SharedLib, []) of
+start(Path, SharedLib) ->
+    case erl_ddll:try_load(Path, SharedLib, []) of
         {ok, loaded} ->
 	    proc_lib:start(?MODULE, init, [SharedLib]),
 	    ok;
         {ok, already_loaded} -> ok;
-        R -> 
+        {error, E} -> 
           io:format("Can't seem to open ~s.so, perhaps it doesn't exist?~n",[SharedLib]),
-          exit(R)
+          io:format("~w~n",[E]),
+          io:format("~s~n",[erl_ddll:format_error(E)]),
+          exit(E)
     end.
 
 
