@@ -46,7 +46,8 @@ start(P) ->
 	    Rand = integer_to_list(random:uniform(1000000000)),
 	    lists:map(
 	      fun(X) ->
-		      rpc:call(X, os, cmd, ["echo " ++ Rand ++ " > " ++ os:getenv("PREACH_ROOT") ++ "/nfsinval"])
+		      rpc:call(X, os, cmd, ["echo " ++ Rand ++ " > " ++ os:getenv("PREACH_ROOT") ++ "/nfsinval"]),
+		      rpc:call(X, os, cmd, ["echo " ++ Rand ++ " > " ++ os:getenv("PWD") ++ "/nfsinval"])
 	      end,
 	      hosts())
     end,
