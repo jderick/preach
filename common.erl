@@ -40,7 +40,7 @@ start(P) ->
     if Local ->
 	    ok;
        true ->
-	    Args = "-pa " ++ os:getenv("PREACH_ROOT") ++ " -model " ++ model_name(),
+	    Args = "-pa " ++ os:getenv("PREACH_ROOT") ++ " -rundir " ++ os:getenv("PWD") ++ " -model " ++ model_name(),
 	    makeLink(hosts(), Args),
 	    %% invalidate nfs cache to ensure latest beam files are loaded
 	    Rand = integer_to_list(random:uniform(1000000000)),
@@ -53,7 +53,7 @@ start(P) ->
     Names = initThreads([], P),
     lists:map(fun(X) -> X ! {trace_handler, self()} end, tuple_to_list(Names)),
     lists:map(fun(X) -> X ! {terminator, self()} end, tuple_to_list(Names)),
-    murphi_interface:start(os:getenv("PWD"), model_name()),
+    murphi_interface:start(rundir(), model_name()),
     io:format("About to compute startstates... ~n",[]),
     SS = startstates(),
     case SS of 
@@ -470,6 +470,16 @@ model_name() ->
        {_,Name} = Name0,
        hd(hd(Name))
     end.
+
+rundir() -> 
+    Name0 = init:get_argument(rundir),
+    if (Name0 == error) ->
+       os:getenv("PWD");
+    true ->
+       {_,Name} = Name0,
+       hd(hd(Name))
+    end.
+
 %%----------------------------------------------------------------------
 %% Function: mynode/1
 %% Purpose : Generates a list of "user@hosts" where erlang workers are 

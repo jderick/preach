@@ -50,7 +50,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     receive {trace_handler, TraceH} -> nop end,
     receive {terminator, Terminator} -> nop end,
     MyID = indexOf(self(), tuple_to_list(Names)),
-    murphi_interface:start(os:getenv("PWD"), model_name()),
+    murphi_interface:start(rundir(), model_name()),
     murphi_interface:init_hash(HashSize),
     WQ = initWorkQueue(),
     TF = initTraceFile(),
