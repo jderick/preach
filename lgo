@@ -13,6 +13,6 @@ print "$dcmd\n"; system($dcmd);
 
 $args = join(' ', @ARGV);
 
-$cmd = "erl -pa $PREACH_ROOT/ebin $PREACH_ROOT/dqs-1.0/ebin +h 1000000 -run preach run -localmode -noshell -model $args";
+$cmd = "erl -pa $PREACH_ROOT -run preach run -localmode -noshell -model $args";
 print "$cmd\n"; system $cmd;
 

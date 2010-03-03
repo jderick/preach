@@ -62,60 +62,27 @@ This should create the blah.so file.  To invoke preach in local mode, do
 
 > lgo blah
 
-Or
-
-> lgo blah > blah.out 
-
-if you want to capture the output in a file
-
 You can run lgo with arguments that will get passed to preach; anything
 after -- is passed.  
 
 > lgo blah -- -nosym
 
-For non-local mode using netbatch (the following only applies within Intel), 
-first make sure the contents of setup are pasted into your ~/.cshrc.<user> 
-file.  Also it is important that a "no suspend" (nosusp) netbatch class is 
-used.  The netbatch class is defined near the top of Intel/nbrun.  Once the 
-class is set appropriately, you can do:
+For non-local mode first make sure the contents of setup are pasted
+into your ~/.cshrc.<user> file.  Populate a "hosts" file with the
+names of node@host in this form:
 
->nbrun 8 blah
+n1@host7436
+n2@host7436
+n3@host7436
+n4@host7436
+n1@host7435
+n2@host7435
+n3@host7435
+n4@host7435
 
-to run blah on 8 nodes.  If you want to specify the name of the run directory, 
-do
+Then run 
 
-> nbrun 8 blah -r blah.rundir
-
-which will create a subdir blah.rundir in the current directory wherein (once 
-the job is run by netbatch) will contain (among other things) the main 
-logfile blah.log.  Without specifying blah.rundir, you will get a run dir named 
-something like run.123456789.
-
-You can run nbrun with arguments that will get passed to preach.
-You need to use -- to do this
-
-> nbrun 8 blah -r blahdir -- -nosym -m 1000
-
-
-
-Running distributed mode without netbatch.......................................
-
-In hosts file:
-
-n1@host1
-n2@host2
-
-Then start erl on these nodes:
- 
-erl -sname n1@host1 -pa ebin
-erl -sname n2@host2 -pa ebin
-
-Then start erl on root:
-
-erl -sname foo -pa ebin -run preach run -model test1
-
-Note that n1 and n2 will still be running erlang; you need to kill them yourself
-when you are done using them.  You can run multiple model runs during their tenure.
+erl  -rsh ssh -sname foo -pa $PREACH_ROOT  -run preach run -model test1 
 
 Caveats........................................................................
 

@@ -5,12 +5,12 @@ WORKQ_FILE = /tmp/workQueue.${USER}
 
 # -W0 turns off warnings here... 
 # remove +native if you want accurate stack dumps from the Erlang Runtime System
-ERLC_OPTIONS = +native  +\{hipe,\[o3\]\} +debug_info -o ebin -W0
+ERLC_OPTIONS = +native  +\{hipe,\[o3\]\} +debug_info 
 MURPHI_INCLUDE = ${PREACH_ROOT}/MurphiEngine/include
 ERLANG_INCLUDE = ${ERLANG_ROOT}/lib/erl_interface/include
 ERLANG_INTERFACE_OBJS = ${ERLANG_ROOT}/lib/erl_interface/obj/x86_64-unknown-linux-gnu
 MU=${PREACH_ROOT}/MurphiEngine/src/mu
-BEAMS = ebin/bitarray.beam ebin/bloom.beam ebin/murphi_interface.beam ebin/diskfilter.beam ebin/diskq.beam ebin/preach.beam
+BEAMS = bitarray.beam bloom.beam murphi_interface.beam diskfilter.beam diskq.beam preach.beam
 
 #all: compile
 all: ${BEAMS} murphiengine
@@ -19,21 +19,19 @@ all: ${BEAMS} murphiengine
 	@erl -make
 
 clean: 
-	rm -f ebin/*.beam
+	rm -f *.beam
 	rm -f erl_crash.dump
 
 run:
 	if [ -w ${WORKQ_FILE} ]; then rm ${WORKQ_FILE}; fi
 	for i in `ls -1 /tmp/tracefile_${USER}.dqs*`; do\
 		if [ -O $$i ]; then rm $$i; fi done	
-	PREACH_TIMESTAMP=`date +%s` erl -localmode -sname console -pa ebin -pa dqs-1.0/ebin +h 1000000
+	PREACH_TIMESTAMP=`date +%s` erl -localmode -sname console +h 1000000
 
-ebin/preach.beam: preach.erl common.erl
-	mkdir -p ebin
+preach.beam: preach.erl common.erl
 	erlc $(ERLC_OPTIONS) $<
 
-ebin/%.beam: %.erl
-	mkdir -p ebin
+%.beam: %.erl
 	erlc $(ERLC_OPTIONS) $<
 
 
