@@ -52,17 +52,17 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     murphi_interface:init_hash(HashSize),
     WQ = initWorkQueue(),
     TF = initTraceFile(),
-						% IF YOU WANT BLOOM...
-						%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
-						% ELSE
+    %% IF YOU WANT BLOOM...
+    %%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
+    %% ELSE
     reach(#r{ss=null,
-						% ENDIF
+    %% ENDIF
 	     names=Names, term=Terminator, th=TraceH,
 	     sent=0, recd=0, count=0, bov=initBov(Names), selfbo=false, 
 	     wq=WQ, tf=TF, id=MyID,
 	     t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
 	     bo_bound=BoBound, unbo_bound=UnboBound, profiling_rate=Profiling_rate }), 
-						%murphi_interface:stop(),
+    %%murphi_interface:stop(),
     OmissionProb =  1.0 - murphi_interface:probNoOmission(),
     io:format("PID ~w: Worker is done; Pr[even one omitted state] <= ~w; No. of hash collisions = ~w~n",
               [self(),OmissionProb,murphi_interface:numberOfHashCollisions()]),
@@ -203,17 +203,17 @@ recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, ss=StateS
 		    end,
 		    case Msg of
 			{{State, Prev}, state} ->
-						% IF YOU WANT BLOOM...
-						%			    case bloom:member(State, StateSet) of 
-						%				true ->
-						%				    recvStates(R#r{recd=NumRecd+1});
-						%				false ->
-						%				    Q2 = enqueue(WorkQ, {State, Prev, 0, 0}),
-						%				    SS2 = bloom:add(State, StateSet),
-			    %%                   % printState(State), 
-						%				    recvStates(R#r{recd=NumRecd+1, ss=SS2, wq=Q2})
-						%		  	end;
-						% ELSE
+%% IF YOU WANT BLOOM...
+%%			    case bloom:member(State, StateSet) of 
+%%				true ->
+%%				    recvStates(R#r{recd=NumRecd+1});
+%%				false ->
+%%				    Q2 = enqueue(WorkQ, {State, Prev, 0, 0}),
+%%				    SS2 = bloom:add(State, StateSet),
+%%                                  % printState(State), 
+%%				    recvStates(R#r{recd=NumRecd+1, ss=SS2, wq=Q2})
+%%		  	end;
+%% ELSE
 			    Test = murphi_interface:brad_hash(State),
 			    if Test == false -> % State not present
 				    Q2 = enqueue(WorkQ,{State, Prev, 0,0}),	
@@ -221,7 +221,7 @@ recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, ss=StateS
 			       true -> % State was present
 				    recvStates(R#r{recd=NumRecd+1})
 			    end;
-						% ENDIF
+			    %% ENDIF
 			{backoff,Pid} ->
 			    ets:insert(Bov, {Pid, true}),
 			    recvStates(R#r{bov=Bov});

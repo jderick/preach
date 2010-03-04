@@ -22,8 +22,8 @@ open(Name, FileSize, CacheSize) ->
     R = file:open(Name, [raw, binary, read, write, read_ahead, delayed_write]),
     case R of
 	{ok, FD} -> ok;
-						% JESSE: had to add the bogus assignment to FD else I get a compile-time error.
-						%   there's probably a cleaner way to do it
+	%% JESSE: had to add the bogus assignment to FD else I get a compile-time error.
+	%%   there's probably a cleaner way to do it
 	{error,Reason} -> FD = null, erlang:error(Reason,[]);
 	_ -> FD = null, exit(1)
     end,
@@ -153,7 +153,7 @@ bulk_foldl_blocks(F, A, [{Begin, Length}|BL], FD) ->
     bulk_foldl_blocks(F, A2, BL, FD).
 
 
-						% create a sorted diskq for each block in the q, plus rc and wc
+%% create a sorted diskq for each block in the q, plus rc and wc
 split(Q=#q{name=Name, max=CacheSize}, KeyIdx) ->
     {RNQL, _} = bulk_foldl(fun (B, {QL, N}) ->
 				   NewQ=#q{fd=NFD} = open(Name ++ "." ++ integer_to_list(N), no_limit, CacheSize),
@@ -260,8 +260,8 @@ nkeymerge(N, [X1 | X], [Y1 | Y], L, F, F2) ->
     end.
 
 
-						% find min level item in the set A - B
-						% A and B must be sorted
+%% find min level item in the set A - B
+%% A and B must be sorted
 findsubtract(Q1, Q2) ->
     #q{bl=BLA, fd=FDA, rc=RCA} = flush_wc(Q1),
     #q{bl=BLB, fd=FDB, rc=RCB} = flush_wc(Q2),
@@ -360,24 +360,6 @@ keylookup(F, Acc, QA, QB, KFA, KFB) ->
 	    keylookup(F, Acc2, QA2, QB3, KFA, KFB)
     end.
 
-testkeylookup() ->
-    Q = diskq:open("test", none, 2),
-    Q2 = diskq:enqueue(Q, {2,0}),
-    Q3 = diskq:enqueue(Q2, {3,1}),
-    Q4 =diskq:enqueue(Q3, {4,3}),
-    diskq:foldl(fun (X, _) -> io:format("~w ", [X]) end, [], Q4),    
-    P = diskq:open("test2", none, 2),
-    P0 = diskq:enqueue(P, {2,3}),
-    P2 = diskq:enqueue(P0, {2,3}),
-    P4 =diskq:enqueue(P2, {4,2}),
-    keylookup(fun (A, B, _) ->
-		      io:format("~w ~w~n", [A, B])
-	      end,
-	      [],
-	      Q4,
-	      P4,
-	      fun({A,_}) -> A end,
-	      fun({A,_}) -> A end).
 
 testkeysort() ->
     Q = diskq:open("test", none, 2),

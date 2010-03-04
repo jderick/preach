@@ -47,8 +47,8 @@ start(P) ->
     lists:map(fun(X) -> X ! {terminator, self()} end, tuple_to_list(Names)),
     LBPid = spawn(?MODULE, load_balancer, [Names,getintarg(lbr,50),idle]),
     lists:map(fun(X) -> X ! {lbPid, LBPid} end, tuple_to_list(Names)),
-						% JESSE: there's some weird badarg error on the first call into murphiEngine unless
-						%        we sleep here for a tidbit...
+    %% JESSE: there's some weird badarg error on the first call into murphiEngine unless
+    %%        we sleep here for a tidbit...
     murphi_interface:start(model_name()),
     timer:sleep(1000),
     io:format("Load Balancing on with ratio ~w~n",[getintarg(lbr,50)]),
@@ -241,8 +241,8 @@ printTrace([H | [H1 | T] ]) ->
     printState(H),
     RuleNum = murphi_interface:whatRuleFired(H,H1),
     if RuleNum == -1 ->
-						%io:format("Uh oh... Preach was asked to print an invalid trace!~n",[]),
-						%error;
+	    %%io:format("Uh oh... Preach was asked to print an invalid trace!~n",[]),
+	    %%error;
 	    io:format("Bad Trans~n",[]),
 	    printTrace([H1 | T]);
        true ->
@@ -325,13 +325,7 @@ constructCounterExample(UseSym,[TraceHead | TraceTail], SetOfStates,Cex) ->
 	    {done,Cex};
        true -> 
 	    NextStateSuccs = transition(NextState),
-						% this code screws things up when we are at the last state of a cex that was *caused* by runtime errors..
-						%  if (is_integer(hd(NextStateSuccs))) -> % this will hold iff NewStates is an error message 
-						%	    io:format("Cex gen: Murphi Engine threw an error (likely an assertion in the Murphi model failed):~s~n",[NextStateSuccs]),
-						%        printState(NextState);
-						%   true -> 
 	    constructCounterExample(UseSym,TraceTail,NextStateSuccs,lists:append(Cex,[NextState]))
-						%   end
     end.
 
 
@@ -344,28 +338,6 @@ checkAck(L) -> receive {ack, PID} ->
                        checkAck(lists:delete(PID, L))
                end.
 
-
-%% Purpose : **Lossy-compression** of state for TraceFile storing purposes
-%%         
-%% Comments: DO NOT USE THIS FUN for the WorkQueue inside reach().
-%%           This is a **lossy-compression** of the state
-%%
-%% Returns : hashed state
-
-						% JESSE: we currently don't use this but rather store full states 
-						%    in the trace file.
-hashState(State) -> State.
-hashStateOld(State) ->
-    case is_binary(State) of
-        true -> Bin = State;
-        false -> Bin = term_to_binary(State)
-    end,
-						% old hash that we suspect caused collisions in the trace file.
-						%N = size(Bin),
-						%Half = trunc(N/2),
-						%<<X:Half/bytes,Y/bytes>> = Bin,
-						%{erlang:phash2(X,16#FFFFFFFF), erlang:phash2(Y,16#FFFFFFFF)}.
-    crypto:md5(Bin).
 
 getintarg(X,D) ->
     case init:get_argument(X) of
@@ -522,7 +494,7 @@ transition(MS) ->
     murphi_interface:nextstates(MS).
 
 %% strangely, just putting murphi_interface:normalize as the first arg
-						% to lists:map below causes a compile time error - Jesse
+%% to lists:map below causes a compile time error - Jesse
 canonicalizeStates(L, UseSym) -> 
     if UseSym ->
 	    lists:map(fun(X) -> murphi_interface:normalize(X) end, L);

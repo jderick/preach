@@ -64,16 +64,16 @@ brad_hash(X) ->
 whatRuleFired(X,Y) -> 
     binary_to_term(call_port({15,list_to_binary([X,Y])})).
 init_hash(Size) -> 
-						% after an hour of great fun, this seems to be the only 
-						% way i found to pass an integer to the c code
-						% (actually this assume the int fits into two bytes and 
-						% is unsigned, or something) -- JESSE
+    %% this seems to be the only 
+    %% way i found to pass an integer to the c code
+    %% (actually this assume the int fits into two bytes and 
+    %% is unsigned, or something) -- JESSE
     call_port({16,list_to_binary([Size rem 256,Size div 256])}), ok.
 probNoOmission() ->
     binary_to_term(call_port({17, <<0>>})).
 canonicalize(X) -> 
-						% NOTE: if you call canonicalize() and them subsequently call
-						% normalize(), normalize() might behave like canonicalize()
+    %% NOTE: if you call canonicalize() and them subsequently call
+    %% normalize(), normalize() might behave like canonicalize()
     binary_to_term(call_port({18,X})).
 equivalentStates(X,Y) -> 
     io:format("entering equivalentStates... ",[]),
