@@ -3,7 +3,7 @@ PReach : A distributed model checker for Murphi
 PReach was developed and is owned by the formal verification team on Larabee2
 (in collaboration with the University of British Columbia).
 Since we are a product team and not a tools team, we cannot make any hard
-gaurantees of support.  That said, we want to see PReach used by others and
+guarantees of support.  That said, we want to see PReach used by others and
 will do our best to be supportive.
 
 A public release under the BSD license is pending.  Currently, we ask that 
@@ -21,8 +21,8 @@ PReach requires Erlang, which can be downloaded here:
 www.erlang.org/download.html
 Or if you are within Intel, you might be able to use the path in the setup file.
 
-Edit the defs of PREACH_ROOT and PREACH_TEMP in ./setup apprpriately; these
-should be the absolute paths to the directoy where the preach sources live
+Edit the defs of PREACH_ROOT and PREACH_TEMP in ./setup appropriately; these
+should be the absolute paths to the directory where the preach sources live
 and the directory where preach will create the trace file and diskq
 during runtime, respectively.  Also ERLANG_ROOT should point to an Erlang
 installation; within Intel the default value should work. The contents of setup
@@ -86,13 +86,13 @@ erl  -rsh ssh -sname foo -pa $PREACH_ROOT  -run preach run -model blah
 
 Caveats........................................................................
 
-* Preach (or perhaps Erlang) has an outstanding bug where occastionally it will
+* Preach (or perhaps Erlang) has an outstanding bug where occasionally it will
   die immediately after being launched with the following message:
 
    {"init terminating in do_boot",{badarg,[{murphi_interface,call_port,1},
       {murphi_interface,startstates,0},{preach,start,1},{proc_lib,init_ack,1}]}}
 
-  this happens nondeterministically; if you see it simply rerunning preach
+  this happens non-deterministically; if you see it simply rerunning preach
   will typically solve the problem.
 
 * the lgo script currently deletes files matching $PREACH_TEMP/*$USER* before
@@ -116,11 +116,11 @@ Preach Command Line Arguments...................................................
             beyond N messages long.  By default back-off is off.  Having back-off
             set too high (or off) can lead to nodes spacing out for large
             models.  Having it too low can lead to preach deadlocking.
-            irrelevent if in localmode.
+            irrelevant if in localmode.
 
 -unbob N2   un-back-off when in back-off mode and message queue shrinks to 
             N messages.  Defaults to N1/2 if -bob N1 is give, but -unbob is not.
-            irrelevent if in localmode or if -bob N1 not given.
+            irrelevant if in localmode or if -bob N1 not given.
 
 -m N3       make the murphi hash table at each node use N3 Megabytes.
             If not given, this defaults to 1024 (1 GB).
