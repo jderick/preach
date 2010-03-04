@@ -3,7 +3,7 @@
 run() ->
     start(length(hosts())).
 
-
+%% Purpose : Uses Erlang's slave library to start remote processes
 makeLink([], _Args) -> ok;
 
 makeLink([Host | Rest], Args) ->
@@ -26,7 +26,9 @@ makeLink([Host | Rest], Args) ->
 
 %%----------------------------------------------------------------------
 %% Function: start/1
-%% Purpose : A timing wrapper for the parallel version of our model checker.
+%% Purpose : It sets up all worker nodes/threads, starts the murphi interface
+%%           and start the actual model-checking by sending the initial states 
+%%           to the workers
 %% Args    : P is the number of Erlang threads to use;
 %%      
 %% Returns :
@@ -118,6 +120,8 @@ initThreads(Names, NumThreads) ->
     ID ! {FullNames, names}, 
     FullNames. 
 
+%% Purpose : Spawn the remote process and only returns when the remote
+%%           process is up and responding
 spawnAndCheck(Node, Module, Fun, Args) ->
     Pid = spawn(Node, Module, Fun, Args),
     case rpc:call(Node, erlang, is_process_alive, [Pid]) of
@@ -126,10 +130,7 @@ spawnAndCheck(Node, Module, Fun, Args) ->
              spawnAndCheck(Node, Module, Fun, Args)
     end.
 
-
-
-
-
+%% Purpose : Implements Stern & Dill's termination algorithm
 detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict) ->
     if NumDone == tuple_size(Names) andalso GlobalSent == GlobalRecd ->
             lists:map(fun(X) -> X ! die end, tuple_to_list(Names)),
@@ -158,7 +159,7 @@ detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict) ->
             end
     end.
 
-
+%% Purpose: Helper function for findPrev. 
 foldIndices(F, A0, L0, IQ) ->
     {_, A2, _} =
         diskq:foldl(fun (X, {N, A, L}) ->
@@ -178,17 +179,12 @@ foldIndices(F, A0, L0, IQ) ->
 
 %% Purpose : Used in traceComputation. Find the tuple w/ the matching state 
 %%          and return the previous state.
-%%          
-%% Args    : QueryState that we are looking to match;  
-%%           TraceFile is  a list of tuples
-%%
-
 findPrev(Index, TraceFile) ->
     R = foldIndices(fun (X, _A) -> X end, not_found, [Index], TraceFile),
     io:format("findPrev returning ~w~n",[R]),
     R.
 
-
+%% Purpose :  Checks if received a backoff message
 gottaBo([],_Bov) -> false;
 gottaBo([Owner|Rest],Bov) -> 
     [{_, OwnerBo}] = ets:lookup(Bov, Owner),
@@ -198,15 +194,19 @@ gottaBo([Owner|Rest],Bov) ->
 	    gottaBo(Rest, Bov)
     end.
 
+%% Purpose : To send states to corresponding owners (nodes)
 sendStates(_PrevState, [], [] ) -> ok;
 
 sendStates(PrevState, [State | SRest], [Owner | ORest] ) ->
     Owner ! {{State,PrevState}, state},
     sendStates(PrevState, SRest, ORest).
 
+%% Computes which node within Names owns State
 owner(State,Names) -> 
     element(1+erlang:phash2(State,tuple_size(Names)), Names) .
 
+%% Purpose :  Like sendStates, but first check if the state owner "is telling"
+%%  to backoff
 tryToSendStates(PrevState, States, Names,Bov ) ->
     Owners = lists:map(fun(S) -> owner(S,Names) end, States),
     GottaBo = gottaBo(Owners,Bov),
@@ -217,13 +217,11 @@ tryToSendStates(PrevState, States, Names,Bov ) ->
 	    true
     end.
 
+%% Purpose: Broadcast Msg
 sendAllPeers(Msg,Names) -> 
     NamesList = tuple_to_list(Names),
     PeersList = lists:filter(fun(Y) -> Y /= self() end,NamesList),
     lists:map(fun(Pid) -> Pid ! {Msg,self()} end,PeersList).
-
-
-
 
 printTrace([]) -> ok;
 printTrace([H | [] ]) -> 
@@ -249,7 +247,6 @@ printTrace([H | [H1 | T] ]) ->
 %%           the counter-examples is done;
 %% Args    : 
 %%           Names is a list of worker's PIDs;
-
 traceMode(Names, TraceFile, TraceH, UseSym) ->
     receive 
         {find_prev, Index, Trace} ->
@@ -461,11 +458,15 @@ mynode(Index) ->
 
 ready(File) -> os:cmd("touch " ++ File).
 
+%% Purpose: Initializes a backoff vector. Each entry represents a node.
+%%          It's used to track if a backoff msg has been received from a node.
 initBov(Names) ->
     Bov = ets:new(bov, []),
     lists:map(fun(Pid) -> ets:insert(Bov, {Pid,false}) end, tuple_to_list(Names)),
     Bov.
 
+%% Purpose : Helper function to indentify to which entry number does a node
+%%   corresponds.
 indexOf(X, L) ->
     indexOf(1, X, L).
 
