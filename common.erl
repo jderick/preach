@@ -7,22 +7,22 @@ run() ->
 makeLink([], _Args) -> ok;
 
 makeLink([Host | Rest], Args) ->
-	S = re:split(atom_to_list(Host), "[@]", [{return, list}]),
-	% BRAD: The BIF tl/1 is awful
-	Machine = list_to_atom(lists:nth(1,tl(S))),
-	Name = list_to_atom(hd(S)),
-	io:format("For sanity: Machine: ~w, Name: ~w~n", [Machine,Name]),	
+    S = re:split(atom_to_list(Host), "[@]", [{return, list}]),
+						% BRAD: The BIF tl/1 is awful
+    Machine = list_to_atom(lists:nth(1,tl(S))),
+    Name = list_to_atom(hd(S)),
+    io:format("For sanity: Machine: ~w, Name: ~w~n", [Machine,Name]),	
     case slave:start_link(Machine, Name, Args) of
 	{ok, Node} ->
 	    io:format("Erlang node started = [~p]~n", [Node]),
-		makeLink(Rest, Args);
+	    makeLink(Rest, Args);
 	{error,timeout} ->
 	    io:format("Could not connect to host ~w...Exiting~n",[Host]),
 	    halt();
 	{error,Reason} ->
 	    io:format("Could not start workers: Reason= ~w...Exiting~n",[Reason]),
 	    halt()
-	end.
+    end.
 
 
 %%----------------------------------------------------------------------
@@ -58,31 +58,31 @@ start(P) ->
     io:format("About to compute startstates... ~n",[]),
     SS = startstates(),
     case SS of 
-      {error,ErrorMsg} -> 
-         io:format("Murphi found an error in a startstate:~n~s~n",[ErrorMsg]);
-    _ -> 
-      CanonicalizedStartStates = canonicalizeStates(SS,init:get_argument(nosym) == error),
-      tryToSendStates({0, 0}, CanonicalizedStartStates, Names, initBov(Names)),
-      NumSent = length(startstates()),
-      io:format("~w (Root): sent ~w startstates~n",[self(),NumSent]),
-      case detectTermination(0, NumSent, 0, 0, Names, dict:new()) of
-        {verified,NumStates,ProbNoOmission} ->
-          OmissionProb =  1.0 - ProbNoOmission,
-          Dur = timer:now_diff(now(), T0)*1.0e-6,
-          {CpuTime,_} = statistics(runtime),
-          io:format("----------~n" ++
-                "REPORT:~n" ++
-                "\tTotal of ~w states visited (this only accurate if no error or in localmode)~n" ++
-                "\tExecution time: ~f seconds~n" ++
-                "\tStates visited per second (real time): ~w~n" ++
-                "\tStates visited per second per thread (real time): ~w~n" ++ 
-                "\tStates visited per second (cpu time): ~w~n" ++
-                "\tPr[even one omitted state] <= ~w~n" ++
-                "----------~n",
-                [NumStates, Dur, trunc(NumStates/Dur), trunc((NumStates/Dur)/P),
-                trunc(1000 * NumStates/CpuTime),OmissionProb]);
-        cex -> ok
-      end
+	{error,ErrorMsg} -> 
+	    io:format("Murphi found an error in a startstate:~n~s~n",[ErrorMsg]);
+	_ -> 
+	    CanonicalizedStartStates = canonicalizeStates(SS,init:get_argument(nosym) == error),
+	    tryToSendStates({0, 0}, CanonicalizedStartStates, Names, initBov(Names)),
+	    NumSent = length(startstates()),
+	    io:format("~w (Root): sent ~w startstates~n",[self(),NumSent]),
+	    case detectTermination(0, NumSent, 0, 0, Names, dict:new()) of
+		{verified,NumStates,ProbNoOmission} ->
+		    OmissionProb =  1.0 - ProbNoOmission,
+		    Dur = timer:now_diff(now(), T0)*1.0e-6,
+		    {CpuTime,_} = statistics(runtime),
+		    io:format("----------~n" ++
+			      "REPORT:~n" ++
+			      "\tTotal of ~w states visited (this only accurate if no error or in localmode)~n" ++
+			      "\tExecution time: ~f seconds~n" ++
+			      "\tStates visited per second (real time): ~w~n" ++
+			      "\tStates visited per second per thread (real time): ~w~n" ++ 
+			      "\tStates visited per second (cpu time): ~w~n" ++
+			      "\tPr[even one omitted state] <= ~w~n" ++
+			      "----------~n",
+			      [NumStates, Dur, trunc(NumStates/Dur), trunc((NumStates/Dur)/P),
+			       trunc(1000 * NumStates/CpuTime),OmissionProb]);
+		cex -> ok
+	    end
     end,
     init:stop().
 
@@ -126,10 +126,10 @@ spawnAndCheck(Node, Module, Fun, Args) ->
         _ -> timer:sleep(1000),
              spawnAndCheck(Node, Module, Fun, Args)
     end.
-        
 
 
-    
+
+
 
 detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict) ->
     if NumDone == tuple_size(Names) andalso GlobalSent == GlobalRecd ->
@@ -192,12 +192,12 @@ findPrev(Index, TraceFile) ->
 
 gottaBo([],_Bov) -> false;
 gottaBo([Owner|Rest],Bov) -> 
-      [{_, OwnerBo}] = ets:lookup(Bov, Owner),
-      if (OwnerBo) ->
-        true;
-      true ->
-        gottaBo(Rest, Bov)
-      end.
+    [{_, OwnerBo}] = ets:lookup(Bov, Owner),
+    if (OwnerBo) ->
+	    true;
+       true ->
+	    gottaBo(Rest, Bov)
+    end.
 
 sendStates(_PrevState, [], [] ) -> ok;
 
@@ -206,42 +206,42 @@ sendStates(PrevState, [State | SRest], [Owner | ORest] ) ->
     sendStates(PrevState, SRest, ORest).
 
 owner(State,Names) -> 
-   element(1+erlang:phash2(State,tuple_size(Names)), Names) .
+    element(1+erlang:phash2(State,tuple_size(Names)), Names) .
 
 tryToSendStates(PrevState, States, Names,Bov ) ->
     Owners = lists:map(fun(S) -> owner(S,Names) end, States),
     GottaBo = gottaBo(Owners,Bov),
     if (GottaBo) ->
-      false;
-    true ->
-      sendStates(PrevState, States, Owners),
-      true
+	    false;
+       true ->
+	    sendStates(PrevState, States, Owners),
+	    true
     end.
 
 sendAllPeers(Msg,Names) -> 
-   NamesList = tuple_to_list(Names),
-   PeersList = lists:filter(fun(Y) -> Y /= self() end,NamesList),
-   lists:map(fun(Pid) -> Pid ! {Msg,self()} end,PeersList).
+    NamesList = tuple_to_list(Names),
+    PeersList = lists:filter(fun(Y) -> Y /= self() end,NamesList),
+    lists:map(fun(Pid) -> Pid ! {Msg,self()} end,PeersList).
 
 
 
 
 printTrace([]) -> ok;
 printTrace([H | [] ]) -> 
-   io:format("Here's the last state...~n",[]),
-   printState(H);
+    io:format("Here's the last state...~n",[]),
+    printState(H);
 printTrace([H | [H1 | T] ]) -> 
-   printState(H),
-   RuleNum = murphi_interface:whatRuleFired(H,H1),
-   if RuleNum == -1 ->
-      %io:format("Uh oh... Preach was asked to print an invalid trace!~n",[]),
-      %error;
-      io:format("Bad Trans~n",[]),
-      printTrace([H1 | T]);
-   true ->
-      io:format("~nRule ~s Fired~n~n",[murphi_interface:rulenumToName(RuleNum)]),
-      printTrace([H1 | T])
-   end.
+    printState(H),
+    RuleNum = murphi_interface:whatRuleFired(H,H1),
+    if RuleNum == -1 ->
+						%io:format("Uh oh... Preach was asked to print an invalid trace!~n",[]),
+						%error;
+	    io:format("Bad Trans~n",[]),
+	    printTrace([H1 | T]);
+       true ->
+	    io:format("~nRule ~s Fired~n~n",[murphi_interface:rulenumToName(RuleNum)]),
+	    printTrace([H1 | T])
+    end.
 
 %% Purpose :  Computes a counter-example, starting from the state that
 %%           violates an invariant. It searches it's local queue (disk-based)
@@ -261,8 +261,8 @@ traceMode(Names, TraceFile, TraceH, UseSym) ->
                     io:format("------------------~n",[]),
                     io:format("Trace Length = ~w~nTrace:~n",[length(T2)]),
                     case constructCounterExample(UseSym,T2, startstates(),[]) of
-                      {done,Cex} -> io:format("Here's the first state...~n",[]),printTrace(Cex);
-                      _ -> io:format("counter example construction failed!!~n",[])
+			{done,Cex} -> io:format("Here's the first state...~n",[]),printTrace(Cex);
+			_ -> io:format("counter example construction failed!!~n",[])
                     end,
                     TraceH ! trace_complete, 
                     traceMode(Names, TraceFile, TraceH,UseSym);
@@ -294,11 +294,11 @@ traceMode(Names, TraceFile, TraceH, UseSym) ->
 constructCounterExampleSymHelper(State,StateList) ->
     NormState = murphi_interface:normalize(State),
     HeuristicAndFastApproach = 
-       lists:foldl(fun(X,Y) -> case (NormState == murphi_interface:normalize(X)) of true -> X; false -> Y end end, null,StateList),
+	lists:foldl(fun(X,Y) -> case (NormState == murphi_interface:normalize(X)) of true -> X; false -> Y end end, null,StateList),
     if (HeuristicAndFastApproach == null) ->
-       lists:foldl(fun(X,Y) -> case murphi_interface:equivalentStates(NormState,X) of true -> X; false -> Y end end, null,StateList);
-    true ->
-       HeuristicAndFastApproach
+	    lists:foldl(fun(X,Y) -> case murphi_interface:equivalentStates(NormState,X) of true -> X; false -> Y end end, null,StateList);
+       true ->
+	    HeuristicAndFastApproach
     end.
 
 constructCounterExample(UseSym,[],_States,Cex) ->
@@ -306,25 +306,25 @@ constructCounterExample(UseSym,[],_States,Cex) ->
 
 constructCounterExample(UseSym,[TraceHead | TraceTail], SetOfStates,Cex) ->
     NextState = 
-      if (UseSym) ->
-        constructCounterExampleSymHelper(TraceHead, SetOfStates);
-      true ->
-        lists:foldl(fun(X,Y) -> case (TraceHead == X) of true -> X; false -> Y end end,
-                    null,SetOfStates)
-    end,
+	if (UseSym) ->
+		constructCounterExampleSymHelper(TraceHead, SetOfStates);
+	   true ->
+		lists:foldl(fun(X,Y) -> case (TraceHead == X) of true -> X; false -> Y end end,
+			    null,SetOfStates)
+	end,
     io:format("construct Cex: length(Partial Cex) = ~w~n",[length(Cex)]),
     if (NextState == null) ->
-       io:format("constructCounterExample failure...~n~w~n~n",[TraceHead]),
-       {done,Cex};
-    true -> 
-       NextStateSuccs = transition(NextState),
-     % this code screws things up when we are at the last state of a cex that was *caused* by runtime errors..
-     %  if (is_integer(hd(NextStateSuccs))) -> % this will hold iff NewStates is an error message 
-	%	    io:format("Cex gen: Murphi Engine threw an error (likely an assertion in the Murphi model failed):~s~n",[NextStateSuccs]),
-    %        printState(NextState);
-    %   true -> 
-         constructCounterExample(UseSym,TraceTail,NextStateSuccs,lists:append(Cex,[NextState]))
-    %   end
+	    io:format("constructCounterExample failure...~n~w~n~n",[TraceHead]),
+	    {done,Cex};
+       true -> 
+	    NextStateSuccs = transition(NextState),
+						% this code screws things up when we are at the last state of a cex that was *caused* by runtime errors..
+						%  if (is_integer(hd(NextStateSuccs))) -> % this will hold iff NewStates is an error message 
+						%	    io:format("Cex gen: Murphi Engine threw an error (likely an assertion in the Murphi model failed):~s~n",[NextStateSuccs]),
+						%        printState(NextState);
+						%   true -> 
+	    constructCounterExample(UseSym,TraceTail,NextStateSuccs,lists:append(Cex,[NextState]))
+						%   end
     end.
 
 
@@ -345,20 +345,20 @@ checkAck(L) -> receive {ack, PID} ->
 %%
 %% Returns : hashed state
 
-% JESSE: we currently don't use this but rather store full states 
-%    in the trace file.
+						% JESSE: we currently don't use this but rather store full states 
+						%    in the trace file.
 hashState(State) -> State.
 hashStateOld(State) ->
     case is_binary(State) of
         true -> Bin = State;
         false -> Bin = term_to_binary(State)
     end,
-    % old hash that we suspect caused collisions in the trace file.
-    %N = size(Bin),
-    %Half = trunc(N/2),
-    %<<X:Half/bytes,Y/bytes>> = Bin,
-    %{erlang:phash2(X,16#FFFFFFFF), erlang:phash2(Y,16#FFFFFFFF)}.
-   crypto:md5(Bin).
+						% old hash that we suspect caused collisions in the trace file.
+						%N = size(Bin),
+						%Half = trunc(N/2),
+						%<<X:Half/bytes,Y/bytes>> = Bin,
+						%{erlang:phash2(X,16#FFFFFFFF), erlang:phash2(Y,16#FFFFFFFF)}.
+    crypto:md5(Bin).
 
 getintarg(X,D) ->
     case init:get_argument(X) of
@@ -379,7 +379,7 @@ timestamp() ->
             integer_to_list(S);
         TS -> TS
     end.
-            
+
 tmp_disk_path() ->
     case os:getenv("PREACH_TEMP") of
         false ->
@@ -395,7 +395,7 @@ tmp_disk_path() ->
 
 initTraceFile() ->
     diskq:open(tmp_disk_path() ++ "/tracefile." ++ atom_to_list(node()),
-         100000000000, getintarg(tfcache, 10000)).
+	       100000000000, getintarg(tfcache, 10000)).
 
 %% Purpose : The workQueue keeps track of the frontier states to be 
 %%          explored
@@ -408,8 +408,8 @@ initTraceFile() ->
 
 initWorkQueue() ->
     diskq:open(tmp_disk_path() ++ "/workQueue." ++ atom_to_list(node()),
-         getintarg(wqsize, 50000000000), getintarg(wqcache, 10000)).
-            
+	       getintarg(wqsize, 50000000000), getintarg(wqcache, 10000)).
+
 enqueue(Q, X) -> diskq:enqueue(Q, X).
 
 count(Q) -> diskq:count(Q).
@@ -465,20 +465,20 @@ is_localMode() -> init:get_argument(localmode) /= error.
 model_name() -> 
     Name0 = init:get_argument(model),
     if (Name0 == error) ->
-       io:format("Missing required -model <model_name> argument.. exiting~n",[]),
-       exit(1);
-    true ->
-       {_,Name} = Name0,
-       hd(hd(Name))
+	    io:format("Missing required -model <model_name> argument.. exiting~n",[]),
+	    exit(1);
+       true ->
+	    {_,Name} = Name0,
+	    hd(hd(Name))
     end.
 
 rundir() -> 
     Name0 = init:get_argument(rundir),
     if (Name0 == error) ->
-       os:getenv("PWD");
-    true ->
-       {_,Name} = Name0,
-       hd(hd(Name))
+	    os:getenv("PWD");
+       true ->
+	    {_,Name} = Name0,
+	    hd(hd(Name))
     end.
 
 %%----------------------------------------------------------------------
@@ -515,7 +515,7 @@ indexOf(N, X, [H | T]) ->
     end.
 
 startstates() ->
-  murphi_interface:startstates().
+    murphi_interface:startstates().
 
 printState(MS) ->
     Str = murphi_interface:stateToString(MS),
@@ -525,12 +525,12 @@ transition(MS) ->
     murphi_interface:nextstates(MS).
 
 %% strangely, just putting murphi_interface:normalize as the first arg
-% to lists:map below causes a compile time error - Jesse
+						% to lists:map below causes a compile time error - Jesse
 canonicalizeStates(L, UseSym) -> 
-   if UseSym ->
-	   lists:map(fun(X) -> murphi_interface:normalize(X) end, L);
-      true -> L 
-   end.
+    if UseSym ->
+	    lists:map(fun(X) -> murphi_interface:normalize(X) end, L);
+       true -> L 
+    end.
 
 checkInvariants(MS) ->
     case murphi_interface:checkInvariants(MS) of

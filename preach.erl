@@ -24,13 +24,11 @@
 	 bov, % backoff vector
 	 recyc, % recycling flag
 	 usesym, % symmetry reduction flag
-	 bo_bound,  % BackOff bound; max size of message queue before
-                % backoff kicks in
-	 unbo_bound,% UnBackOff bound; when message queue gets
-                % this small and we're in back-off mode, we send Unbackoff
-     checkdeadlocks,% 
-     profiling_rate  % determines how often profiling info is spat out
-	 }).
+	 bo_bound,  % BackOff bound; max size of message queue before backoff kicks in
+	 unbo_bound,% UnBackOff bound; when message queue gets this small and we're in back-off mode, we send Unbackoff
+	 checkdeadlocks,% 
+	 profiling_rate  % determines how often profiling info is spat out
+	}).
 
 
 %%----------------------------------------------------------------------
@@ -44,7 +42,7 @@
 %%----------------------------------------------------------------------
 startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profiling_rate) ->
     io:format("Host ~s; PID ~w: startWorker() entered (model is ~s;UseSym is ~w;CheckDeadlocks is ~w)~n", 
-		      [second(inet:gethostname()),self(),ModelName,UseSym,CheckDeadlocks]),
+	      [second(inet:gethostname()),self(),ModelName,UseSym,CheckDeadlocks]),
     crypto:start(),
     receive {Names, names} -> do_nothing end,
     receive {trace_handler, TraceH} -> nop end,
@@ -54,22 +52,22 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     murphi_interface:init_hash(HashSize),
     WQ = initWorkQueue(),
     TF = initTraceFile(),
-% IF YOU WANT BLOOM...
-%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
-% ELSE
+						% IF YOU WANT BLOOM...
+						%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
+						% ELSE
     reach(#r{ss=null,
-% ENDIF
-          names=Names, term=Terminator, th=TraceH,
-	      sent=0, recd=0, count=0, bov=initBov(Names), selfbo=false, 
-	      wq=WQ, tf=TF, id=MyID,
-	      t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
-          bo_bound=BoBound, unbo_bound=UnboBound, profiling_rate=Profiling_rate }), 
-    %murphi_interface:stop(),
+						% ENDIF
+	     names=Names, term=Terminator, th=TraceH,
+	     sent=0, recd=0, count=0, bov=initBov(Names), selfbo=false, 
+	     wq=WQ, tf=TF, id=MyID,
+	     t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
+	     bo_bound=BoBound, unbo_bound=UnboBound, profiling_rate=Profiling_rate }), 
+						%murphi_interface:stop(),
     OmissionProb =  1.0 - murphi_interface:probNoOmission(),
     io:format("PID ~w: Worker is done; Pr[even one omitted state] <= ~w; No. of hash collisions = ~w~n",
               [self(),OmissionProb,murphi_interface:numberOfHashCollisions()]),
     ok.
-	 
+
 %%----------------------------------------------------------------------
 %% Function: reach/9
 %% Purpose : Removes the first state from the list, 
@@ -112,42 +110,42 @@ reach(R=#r{names=Names, count=Count, sent=NumSent, th=TraceH, id=MyID, recyc=Rec
 		    TF2 = TF
 	    end,
 	    NewStates = transition(State),
-        if (CheckDeadlocks andalso (NewStates == [])) ->
+	    if (CheckDeadlocks andalso (NewStates == [])) ->
 		    io:format("Found (global) deadlock state.~n",[]),
 		    io:format("Just in case cex constructiong fails, here it is:~n",[]),
-            printState(State),
+		    printState(State),
 		    TraceH ! {error_found, self(), StateID},
 		    traceMode(Names, TF2, TraceH, UseSym);
-        (is_integer(hd(NewStates))) -> % this will hold iff NewStates is an error message 
+	       (is_integer(hd(NewStates))) -> % this will hold iff NewStates is an error message 
 		    io:format("Murphi Engine threw an error (likely an assertion in the Murphi model failed):~n~s~n",[NewStates]),
 		    io:format("Just in case cex constructiong fails, here it is:~n",[]),
-            printState(State),
-		    TraceH ! {error_found, self(), StateID},
-		    traceMode(Names, TF2, TraceH, UseSym);
-        true ->
-	    NewCanonicalizedStates = canonicalizeStates(NewStates, UseSym),
-	    FailedInvariant = checkInvariants(State),
-	    if (FailedInvariant /= null) ->
-		    io:format("Found Invariant Failure (~s)~n",[FailedInvariant]),
-		    io:format("Just in case cex constructiong fails, here it is:~n",[]),
-            printState(State),
+		    printState(State),
 		    TraceH ! {error_found, self(), StateID},
 		    traceMode(Names, TF2, TraceH, UseSym);
 	       true ->
-		    SendSuccessful = tryToSendStates({MyID, StateID}, NewCanonicalizedStates, Names, Bov),
-		    if (SendSuccessful) ->
-			    NewWQ = Q2,
-			    NewNumSent = NumSent + length(NewCanonicalizedStates),
-			    NewCount = Count+1,
-			    NewRecycling = false;
+		    NewCanonicalizedStates = canonicalizeStates(NewStates, UseSym),
+		    FailedInvariant = checkInvariants(State),
+		    if (FailedInvariant /= null) ->
+			    io:format("Found Invariant Failure (~s)~n",[FailedInvariant]),
+			    io:format("Just in case cex constructiong fails, here it is:~n",[]),
+			    printState(State),
+			    TraceH ! {error_found, self(), StateID},
+			    traceMode(Names, TF2, TraceH, UseSym);
 		       true ->
-			    NewWQ = enqueue(Q2,{State, PrevState, 1, StateID}),
-			    NewNumSent = NumSent,
-			    NewCount = Count,
-			    NewRecycling = true
-		    end,
-		    reach(R2#r{tf=TF2, wq=NewWQ, count=NewCount, sent=NewNumSent, recyc=NewRecycling})
-	    end
+			    SendSuccessful = tryToSendStates({MyID, StateID}, NewCanonicalizedStates, Names, Bov),
+			    if (SendSuccessful) ->
+				    NewWQ = Q2,
+				    NewNumSent = NumSent + length(NewCanonicalizedStates),
+				    NewCount = Count+1,
+				    NewRecycling = false;
+			       true ->
+				    NewWQ = enqueue(Q2,{State, PrevState, 1, StateID}),
+				    NewNumSent = NumSent,
+				    NewCount = Count,
+				    NewRecycling = true
+			    end,
+			    reach(R2#r{tf=TF2, wq=NewWQ, count=NewCount, sent=NewNumSent, recyc=NewRecycling})
+		    end
 	    end
     end.
 
@@ -177,7 +175,7 @@ secondsSince(T0) ->
 %%----------------------------------------------------------------------
 recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, ss=StateSet, tf=TF,
 	        th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym,
-            bo_bound=BoBound, unbo_bound=UnboBound }) ->
+		bo_bound=BoBound, unbo_bound=UnboBound }) ->
     WQSize = count(WorkQ),
     {_, RuntimeLen} = process_info(self(),message_queue_len),
     if (SelfBo andalso (RuntimeLen < UnboBound)) ->
@@ -205,25 +203,25 @@ recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, ss=StateS
 		    end,
 		    case Msg of
 			{{State, Prev}, state} ->
-% IF YOU WANT BLOOM...
-%			    case bloom:member(State, StateSet) of 
-%				true ->
-%				    recvStates(R#r{recd=NumRecd+1});
-%				false ->
-%				    Q2 = enqueue(WorkQ, {State, Prev, 0, 0}),
-%				    SS2 = bloom:add(State, StateSet),
-%%                   % printState(State), 
-%				    recvStates(R#r{recd=NumRecd+1, ss=SS2, wq=Q2})
-%		  	end;
-% ELSE
-				Test = murphi_interface:brad_hash(State),
-				if Test == false -> % State not present
-				     Q2 = enqueue(WorkQ,{State, Prev, 0,0}),	
-					 recvStates(R#r{recd=NumRecd+1, wq=Q2});
-				true -> % State was present
-					recvStates(R#r{recd=NumRecd+1})
-				end;
-% ENDIF
+						% IF YOU WANT BLOOM...
+						%			    case bloom:member(State, StateSet) of 
+						%				true ->
+						%				    recvStates(R#r{recd=NumRecd+1});
+						%				false ->
+						%				    Q2 = enqueue(WorkQ, {State, Prev, 0, 0}),
+						%				    SS2 = bloom:add(State, StateSet),
+			    %%                   % printState(State), 
+						%				    recvStates(R#r{recd=NumRecd+1, ss=SS2, wq=Q2})
+						%		  	end;
+						% ELSE
+			    Test = murphi_interface:brad_hash(State),
+			    if Test == false -> % State not present
+				    Q2 = enqueue(WorkQ,{State, Prev, 0,0}),	
+				    recvStates(R#r{recd=NumRecd+1, wq=Q2});
+			       true -> % State was present
+				    recvStates(R#r{recd=NumRecd+1})
+			    end;
+						% ENDIF
 			{backoff,Pid} ->
 			    ets:insert(Bov, {Pid, true}),
 			    recvStates(R#r{bov=Bov});
@@ -250,10 +248,10 @@ recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, ss=StateS
 
 profiling(#r{selfbo=SelfBo,count=Count, t0=T0, sent=NumSent, recd=NumRecd, wq=WorkQ,profiling_rate=PR})->
     if Count rem PR == 0 ->
-        Runtime = secondsSince(T0),
-        {_, Mem} = process_info(self(),memory),
-        {CpuTime,_} = statistics(runtime),
-        WorkQ_heapSize =  erts_debug:flat_size(WorkQ) * 8, 
+	    Runtime = secondsSince(T0),
+	    {_, Mem} = process_info(self(),memory),
+	    {CpuTime,_} = statistics(runtime),
+	    WorkQ_heapSize =  erts_debug:flat_size(WorkQ) * 8, 
 	    io:format("~n~s.~w: " ++
 		      "~w states explored in ~w s (~.1f per sec) (cpu time: ~.1f; ~.1f per second ) " ++
 		      "with ~w states sent, ~w states received " ++
@@ -264,5 +262,5 @@ profiling(#r{selfbo=SelfBo,count=Count, t0=T0, sent=NumSent, recd=NumRecd, wq=Wo
        true -> nop
     end.
 
-    
+
 dequeue(Q) -> diskq:dequeue(Q).

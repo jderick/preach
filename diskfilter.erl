@@ -19,9 +19,9 @@ find_block(BL) ->
 	    0;
        true ->
 	    {Last, LL} = lists:last(BL),
-	     Last + LL
+	    Last + LL
     end.
-		    
+
 keymerge(Q=#q{bl=BL, il=IL, fd=FD, max=BlockSize, name=Name, ql=QL}, L, NewFun) ->
     {ok, FD2} = file:open(Name ++ ".tmp", [raw, binary, read, write, read_ahead, delayed_write]),
     {Added, NewBL, NewIL} = keymerge(BL, L, [], NewFun, [], [], [], FD, FD2, BlockSize),
@@ -52,12 +52,12 @@ get_block(X, [{Begin, End} | BL], [{First, Last} | IL], FD) ->
     if X >= First andalso X =< Last ->
 	    {ok, Bin} = file:pread(FD, Begin, End),
 	    binary_to_term(Bin);
-    true ->
+       true ->
 	    get_block(X, BL, IL, FD)
     end.
-    
-    
-     
+
+
+
 
 keymerge([], [], [], _F, Added, NewBL, NewIL, _FD, _FD2, _CacheSize) ->
     {Added, NewBL, NewIL};
@@ -79,10 +79,10 @@ keymerge(BL, L, L2, F, Added, NewBL, NewIL, FD, FD2, CacheSize) ->
 
 id(X) -> X.
 
-% merge n keys from x and y
-% return the remainder of the two lists along with the merged list
-% F is applied to items in Y before they are added to the list
-% we accumulate items added to the merged list from Y in A
+						% merge n keys from x and y
+						% return the remainder of the two lists along with the merged list
+						% F is applied to items in Y before they are added to the list
+						% we accumulate items added to the merged list from Y in A
 
 nkeymerge(N, X, Y, F, F2) ->
     nkeymerge(N, X, Y, [], [], F, F2).
