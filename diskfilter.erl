@@ -22,7 +22,7 @@ find_block(BL) ->
 	    Last + LL
     end.
 
-keymerge(Q=#q{bl=BL, il=IL, fd=FD, max=BlockSize, name=Name, ql=QL}, L, NewFun) ->
+keymerge(Q=#q{bl=BL, il=_, fd=FD, max=BlockSize, name=Name, ql=_}, L, NewFun) ->
     {ok, FD2} = file:open(Name ++ ".tmp", [raw, binary, read, write, read_ahead, delayed_write]),
     {Added, NewBL, NewIL} = keymerge(BL, L, [], NewFun, [], [], [], FD, FD2, BlockSize),
     file:close(FD),
@@ -31,32 +31,6 @@ keymerge(Q=#q{bl=BL, il=IL, fd=FD, max=BlockSize, name=Name, ql=QL}, L, NewFun) 
     file:rename(Name ++ ".tmp", Name),
     {ok, FD3} = file:open(Name, [raw, binary, read, write, read_ahead, delayed_write]),    
     {Q#q{fd=FD3, bl=NewBL, il=NewIL}, Added}.
-
-keyfilter([], _, _, _, _, Acc) -> Acc;
-keyfilter([{H, H2} | T], BL, IL, FD, BlockSize, Acc) ->
-    case get_block(H, BL, IL, FD) of
-	not_found ->
-	    keyfilter(T, BL, IL, FD, BlockSize, [{H, H2} | Acc]);
-	B ->
-	    {[], [], _, _, New} = nkeymerge(BlockSize + 1, B, [{H, H2}], fun (X) -> X end, fun (X) -> X end),
-	    case New of
-		[] ->
-		    keyfilter(T, BL, IL, FD, BlockSize, Acc);
-		[E] ->
-		    keyfilter(T, BL, IL, FD, BlockSize, [E | Acc])
-	    end
-    end.
-
-get_block(_X, [], [], _FD) -> not_found;
-get_block(X, [{Begin, End} | BL], [{First, Last} | IL], FD) ->
-    if X >= First andalso X =< Last ->
-	    {ok, Bin} = file:pread(FD, Begin, End),
-	    binary_to_term(Bin);
-       true ->
-	    get_block(X, BL, IL, FD)
-    end.
-
-
 
 
 keymerge([], [], [], _F, Added, NewBL, NewIL, _FD, _FD2, _CacheSize) ->
@@ -79,10 +53,10 @@ keymerge(BL, L, L2, F, Added, NewBL, NewIL, FD, FD2, CacheSize) ->
 
 id(X) -> X.
 
-						% merge n keys from x and y
-						% return the remainder of the two lists along with the merged list
-						% F is applied to items in Y before they are added to the list
-						% we accumulate items added to the merged list from Y in A
+%% merge n keys from x and y
+%% return the remainder of the two lists along with the merged list
+%% F is applied to items in Y before they are added to the list
+%% we accumulate items added to the merged list from Y in A
 
 nkeymerge(N, X, Y, F, F2) ->
     nkeymerge(N, X, Y, [], [], F, F2).

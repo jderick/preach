@@ -55,17 +55,17 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     murphi_interface:init_hash(HashSize),
     WQ = initWorkQueue(),
     TF = initTraceFile(),
-						% IF YOU WANT BLOOM...
-						%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
-						% ELSE
+%% IF YOU WANT BLOOM...
+%%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
+%% ELSE
     reach(#r{ss=null,
-						% ENDIF
+%% ENDIF
 	     names=Names, term=Terminator, th=TraceH,
 	     sent=0, recd=0, count=0, bov=initBov(Names), selfbo=false, 
 	     wq=WQ, tf=TF, id=MyID,
 	     t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
 	     bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=false, profiling_rate = Profiling_rate }), 
-						%murphi_interface:stop(),
+    %%murphi_interface:stop(),
     OmissionProb =  1.0 - murphi_interface:probNoOmission(),
     io:format("PID ~w: Worker is done; Pr[even one omitted state] <= ~w; No. of hash collisions = ~w~n",
               [self(),OmissionProb,murphi_interface:numberOfHashCollisions()]),
@@ -213,13 +213,13 @@ recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, ss=StateS
 			    NumberToSend = (Ratio * WQSize) div 100,
 			    {StateList,Q2} = dequeueMany(WorkQ, NumberToSend),
 			    IdlePid ! {extraStateList, StateList},
-						%recvStates(R#r{sent=NumSent+NumberToSend, wq=Q2});
+			    %%recvStates(R#r{sent=NumSent+NumberToSend, wq=Q2});
 			    recvStates(R#r{sent=NumSent, wq=Q2});
 			{extraStateList, StateList} -> 
 			    StateListLen = length(StateList),
 			    io:format("(~s.~w) got ~w extra states~n", [second(inet:gethostname()),self(),StateListLen]),
 			    Q2 = enqueueMany(WorkQ, StateList),
-						%recvStates(R#r{recd=NumRecd+StateListLen,wq=Q2, lb_pending=(StateList == [])});
+			    %%recvStates(R#r{recd=NumRecd+StateListLen,wq=Q2, lb_pending=(StateList == [])});
 			    recvStates(R#r{recd=NumRecd,wq=Q2, lb_pending=(StateList == [])});
 			{backoff,Pid} ->
 			    ets:insert(Bov, {Pid, true}),
@@ -260,8 +260,6 @@ dequeue(Q) -> diskq:dequeue(Q).
 enqueueMany(WQ, []) -> WQ;
 
 enqueueMany(WQ, [State | Rest]) ->
-						%BLAHBLAH
-						%Q2 = enqueue(WQ, {State, null, dont_care, 0, 0}),
     Q2 = enqueue(WQ, {State,false}),
     enqueueMany(Q2, Rest).
 
@@ -269,8 +267,6 @@ dequeueMany(WQ, 0) ->
     {[], WQ};	
 
 dequeueMany(WQ, Num) ->
-						%BLAHBLAH
-						%{[{State,_,_,_}],Q2} = dequeue(WQ),
     {[{State,Recycled}],Q2} = dequeue(WQ),
     {R3,Q3} = dequeueMany(Q2, Num-1),
     {[State | R3],Q3}.
