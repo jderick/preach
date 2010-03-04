@@ -1,7 +1,7 @@
 -module(diskq).
 -export([open/3, enqueue/2, dequeue/1, count/1, foldl/3, bulk_foldl/3, open_ks/3,
 	 truncate/1, keysort/2, findsubtract/2, dummy/0, peek/1, keylookup/6,
-	testkeysort/0, testsubtract/0, open/1, close/1, delete/1, keysub/6]).
+	 testkeysort/0, testsubtract/0, open/1, close/1, delete/1, keysub/6]).
 
 -record(q,
  	{ name,      % filename
@@ -17,15 +17,15 @@
 	 } ).
 
 count(#q{count=C}) -> C.
-     
+
 open(Name, FileSize, CacheSize) ->
     R = file:open(Name, [raw, binary, read, write, read_ahead, delayed_write]),
     case R of
-      {ok, FD} -> ok;
-% JESSE: had to add teh bogus assignment to FD else I get a compile-time error.
-%   there's probably a cleaner way to do it
-      {error,Reason} -> FD = null, erlang:error(Reason,[]);
-      _ -> FD = null, exit(1)
+	{ok, FD} -> ok;
+						% JESSE: had to add the bogus assignment to FD else I get a compile-time error.
+						%   there's probably a cleaner way to do it
+	{error,Reason} -> FD = null, erlang:error(Reason,[]);
+	_ -> FD = null, exit(1)
     end,
     #q{name = Name, fsize = FileSize, max = CacheSize, fd = FD}.
 
@@ -43,8 +43,6 @@ delete(#q{name=Name}) ->
 open(Q=#q{name=Name}) ->
     {ok, FD} = file:open(Name, [raw, binary, read, write, read_ahead, delayed_write]),
     Q#q{fd=FD}.
-    
-%    ok = file:delete(Name).
 
 truncate(Q) -> Q#q{rc = [], wc = [], wccnt = 0, bl = [], count = 0}.
 
@@ -73,7 +71,7 @@ flush_wc(Q=#q{fsize=FSize, fd=FD, wc=WC, bl=BL, sort=KS}) ->
     {ok, Begin} = find_block(Len, FSize, BL),
     ok  = file:pwrite(FD, Begin, Bin),
     Q#q{wc = [], wccnt = 0, bl = BL ++ [{Begin, Len}]}.
-    
+
 
 find_block(Len, Fsize, BL) ->
     if BL == [] ->
@@ -88,10 +86,10 @@ find_block(Len, Fsize, BL) ->
 			    {errflag(Len < First), 0}
 		    end;
 	       true ->
-		     {errflag(Last + LL + Len < First), Last + LL}
+		    {errflag(Last + LL + Len < First), Last + LL}
 	    end
     end.
-		    
+
 errflag(X) ->			    
     if X ->
 	    ok;
@@ -154,8 +152,8 @@ bulk_foldl_blocks(F, A, [{Begin, Length}|BL], FD) ->
     A2 = F(binary_to_term(Bin), A),
     bulk_foldl_blocks(F, A2, BL, FD).
 
-	  
-% create a sorted diskq for each block in the q, plus rc and wc
+
+						% create a sorted diskq for each block in the q, plus rc and wc
 split(Q=#q{name=Name, max=CacheSize}, KeyIdx) ->
     {RNQL, _} = bulk_foldl(fun (B, {QL, N}) ->
 				   NewQ=#q{fd=NFD} = open(Name ++ "." ++ integer_to_list(N), no_limit, CacheSize),
@@ -211,7 +209,7 @@ keysort(QL, KeyFun) ->
 		    end
 	    end
     end.
-	    
+
 keymerge(#q{bl=BLA, fd=FDA, name=NameA, max=CacheSize}, #q{bl=BLB, fd=FDB}, KeyFuns) ->
     OutQ = open(NameA ++ ".0", no_limit, CacheSize),
     keymerge(BLA, BLB, [], [], FDA, FDB, KeyFuns, CacheSize, OutQ).
@@ -234,7 +232,7 @@ keymerge(BLA, BLB, A, B, FDA, FDB, KeyFuns, CacheSize, OutQ=#q{bl=OutBL, fd=OutF
     {ok, Begin} = find_block(Len, no_limit, OutBL),
     ok = file:pwrite(OutFD, Begin, Bin),
     keymerge(BLA, BLB, A2, B2, FDA, FDB, KeyFuns, CacheSize, OutQ#q{bl=OutBL ++ [{Begin, Len}], count=Count+length(Block)}).
-	        
+
 
 nkeymerge(N, X, Y, F, F2) ->
     nkeymerge(N, X, Y, [], F, F2).
@@ -262,8 +260,8 @@ nkeymerge(N, [X1 | X], [Y1 | Y], L, F, F2) ->
     end.
 
 
-% find min level item in the set A - B
-% A and B must be sorted
+						% find min level item in the set A - B
+						% A and B must be sorted
 findsubtract(Q1, Q2) ->
     #q{bl=BLA, fd=FDA, rc=RCA} = flush_wc(Q1),
     #q{bl=BLB, fd=FDB, rc=RCB} = flush_wc(Q2),
@@ -298,9 +296,9 @@ findsubtract(BLA, BLB, A, B, FDA, FDB, Hash, MinLevel) ->
 	    end
     end.
 
-		   
+
 fst({X, _}) -> X.
-     
+
 
 keysubtract(A, [], _, _) -> {none, {A, []}};
 keysubtract([], B, _, _) -> {none, {[], B}};
@@ -361,7 +359,7 @@ keylookup(F, Acc, QA, QB, KFA, KFB) ->
 	    {_, QB3} = dequeue(QB2),
 	    keylookup(F, Acc2, QA2, QB3, KFA, KFB)
     end.
-	    
+
 testkeylookup() ->
     Q = diskq:open("test", none, 2),
     Q2 = diskq:enqueue(Q, {2,0}),
@@ -402,7 +400,7 @@ testsubtract() ->
     P2 = diskq:enqueue(P0, {3,3}),
     P4 =diskq:enqueue(P2, {4,2}),
     findsubtract(Q4, P4).
-  
-    
 
-				    
+
+
+

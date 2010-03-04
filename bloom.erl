@@ -68,21 +68,21 @@ add_element(E, B) -> add(E, B).
 %%  V band (1 bsl (I rem ?W)) =/= 0.
 
 -record(bloom, {
-  e,    % error probability
-  n,    % maximum number of elements
-  mb,   % 2^mb = m, the size of each slice (bitvector)
-  h,    % number of hashes (2: double hashing, 3: triple hashing, etc)
-  size, % number of elements
-  a     % list of bitvectors
-}).
+	  e,    % error probability
+	  n,    % maximum number of elements
+	  mb,   % 2^mb = m, the size of each slice (bitvector)
+	  h,    % number of hashes (2: double hashing, 3: triple hashing, etc)
+	  size, % number of elements
+	  a     % list of bitvectors
+	 }).
 
 -record(sbf, {
-  e,    % error probability
-  r,    % error probability ratio
-  s,    % log 2 of growth ratio
-  size, % number of elements
-  b     % list of plain bloom filters
-}).
+	  e,    % error probability
+	  r,    % error probability ratio
+	  s,    % log 2 of growth ratio
+	  size, % number of elements
+	  b     % list of plain bloom filters
+	 }).
 
 %% Constructors for (fixed capacity) bloom filters
 %%
@@ -91,22 +91,22 @@ add_element(E, B) -> add(E, B).
 
 bloom(N) -> bloom(N, 0.001).
 bloom(N, E) when is_number(N), N > 0,
-            is_float(E), E > 0, E < 1 ->
-  bloom(size, N, E).
+is_float(E), E > 0, E < 1 ->
+    bloom(size, N, E).
 
 bloom(Mode, Dim, E) ->
-  crypto:start(),
-  K = 1 + trunc(log2(1/E)),
-  P = pow(E, 1 / K),
-  case Mode of
-    size -> Mb = 1 + trunc(-log2(1 - pow(1 - P, 1 / Dim)));
-    bits -> Mb = Dim
-  end,
-  M = 1 bsl Mb,
-  N = trunc(log(1-P) / log(1-1/M)),
-  #bloom{e=E, n=N, mb=Mb, size = 0,
-         h = number_hashes(Mb, E),
-         a = [bitarray:new(1 bsl Mb) || _ <- lists:seq(1, K)]}.
+    crypto:start(),
+    K = 1 + trunc(log2(1/E)),
+    P = pow(E, 1 / K),
+    case Mode of
+	size -> Mb = 1 + trunc(-log2(1 - pow(1 - P, 1 / Dim)));
+	bits -> Mb = Dim
+    end,
+    M = 1 bsl Mb,
+    N = trunc(log(1-P) / log(1-1/M)),
+    #bloom{e=E, n=N, mb=Mb, size = 0,
+	   h = number_hashes(Mb, E),
+	   a = [bitarray:new(1 bsl Mb) || _ <- lists:seq(1, K)]}.
 
 log2(X) -> log(X) / log(2).
 
@@ -125,10 +125,10 @@ sbf(N, E, 1) -> sbf(N, E, 1, 0.85);
 sbf(N, E, 2) -> sbf(N, E, 2, 0.75);
 sbf(N, E, 3) -> sbf(N, E, 3, 0.65).
 sbf(N, E, S, R) when is_number(N), N > 0,
-                     is_float(E), E > 0, E < 1,
-                     is_integer(S), S > 0, S < 4,
-                     is_float(R), R > 0, R < 1 ->
-  #sbf{e=E, s=S, r=R, size=0, b=[bloom(N, E*(1-R))]}.
+is_float(E), E > 0, E < 1,
+is_integer(S), S > 0, S < 4,
+is_float(R), R > 0, R < 1 ->
+    #sbf{e=E, s=S, r=R, size=0, b=[bloom(N, E*(1-R))]}.
 
 %% Returns number of elements
 %%
@@ -143,29 +143,29 @@ capacity(#sbf{}) -> infinity.
 %% Test for membership
 %%
 member(Elem, #bloom{}=B) ->
-  hash_member(make_hashes(B, Elem), B);
+    hash_member(make_hashes(B, Elem), B);
 member(Elem, #sbf{b=[B|_]}=Sbf) ->
-  hash_member(make_hashes(B, Elem), Sbf).
+    hash_member(make_hashes(B, Elem), Sbf).
 
 hash_member(Hashes, #bloom{mb=Mb, a=A, h=H}) ->
-  all_set(1 bsl Mb - 1, make_indexes(H, Mb, Hashes), A);
+    all_set(1 bsl Mb - 1, make_indexes(H, Mb, Hashes), A);
 hash_member(Hashes, #sbf{b=B}) ->
-  lists:any(fun(X) -> hash_member(Hashes, X) end, B).
+    lists:any(fun(X) -> hash_member(Hashes, X) end, B).
 
 make_hashes(_, Elem) ->
-  crypto:sha(term_to_binary(Elem)).
-%make_hashes(#bloom{mb=Mb, h=H}, Elem) ->
-  %N32 = (H * Mb - 1) div 32 + 1,
-  %<< <<(erlang:phash2({Elem,I}, 1 bsl 32)):32>> || I <- lists:seq(1,N32) >>.
-    
+    crypto:sha(term_to_binary(Elem)).
+						%make_hashes(#bloom{mb=Mb, h=H}, Elem) ->
+						%N32 = (H * Mb - 1) div 32 + 1,
+						%<< <<(erlang:phash2({Elem,I}, 1 bsl 32)):32>> || I <- lists:seq(1,N32) >>.
+
 make_indexes(N, Mb, HashBits) ->
-  Size = Mb*N,
-  <<Bin:Size/bits, _/bits>> = HashBits,
-  Is = [I || <<I:Mb>> <= Bin],
-  if
-    N =< 4 -> list_to_tuple(Is);
-    true -> Is
-  end.
+    Size = Mb*N,
+    <<Bin:Size/bits, _/bits>> = HashBits,
+    Is = [I || <<I:Mb>> <= Bin],
+    if
+	N =< 4 -> list_to_tuple(Is);
+	true -> Is
+    end.
 
 fst([H|_]) -> H;
 fst(Indexes) -> element(1, Indexes).
@@ -179,37 +179,37 @@ next_idx([I0 | Is=[I1|_]]) -> [I0+I1 | next_idx(Is)].
 
 all_set(_Mask, _Indexes, []) -> true;
 all_set(Mask, Indexes, [H|T]) ->
-  case bitarray:get(fst(Indexes), H) of
-    true -> all_set(Mask, next_idx(Mask, Indexes), T);
-    false -> false
-  end.
+    case bitarray:get(fst(Indexes), H) of
+	true -> all_set(Mask, next_idx(Mask, Indexes), T);
+	false -> false
+    end.
 
 %% Adds element to set
 %%
 add(Elem, #bloom{}=B) -> hash_add(make_hashes(B, Elem), B);
 add(Elem, #sbf{size=Size, r=R, s=S, b=[H|T]=Bs}=Sbf) ->
-  #bloom{mb=Mb, e=E, n=N, size=HSize} = H,
-  Hashes = make_hashes(H, Elem),
-  case hash_member(Hashes, Sbf) of
-    true -> Sbf;
-    false ->
-      case HSize < N of
-        true -> Sbf#sbf{size=Size+1, b=[hash_add(Hashes, H)|T]};
-        false ->
-          B = add(Elem, bloom(bits, Mb + S, E * R)),
-          Sbf#sbf{size=Size+1, b=[B|Bs]}
-      end
-  end.
+    #bloom{mb=Mb, e=E, n=N, size=HSize} = H,
+    Hashes = make_hashes(H, Elem),
+    case hash_member(Hashes, Sbf) of
+	true -> Sbf;
+	false ->
+	    case HSize < N of
+		true -> Sbf#sbf{size=Size+1, b=[hash_add(Hashes, H)|T]};
+		false ->
+		    B = add(Elem, bloom(bits, Mb + S, E * R)),
+		    Sbf#sbf{size=Size+1, b=[B|Bs]}
+	    end
+    end.
 
 hash_add(Hashes, #bloom{mb=Mb, a=A, h=H, size=Size} = B) ->
-  Mask = 1 bsl Mb -1,
-  Indexes = make_indexes(H, Mb, Hashes),
-  case all_set(Mask, Indexes, A) of
-    true -> B;
-    false -> B#bloom{size=Size+1, a=set_bits(Mask, Indexes, A)}
-  end.
+    Mask = 1 bsl Mb -1,
+    Indexes = make_indexes(H, Mb, Hashes),
+    case all_set(Mask, Indexes, A) of
+	true -> B;
+	false -> B#bloom{size=Size+1, a=set_bits(Mask, Indexes, A)}
+    end.
 
 set_bits(_Mask, _Indexes, []) -> [];
 set_bits(Mask, Indexes, [H|T]) ->
-  [bitarray:set(fst(Indexes), H) | set_bits(Mask, next_idx(Mask, Indexes), T)].
+    [bitarray:set(fst(Indexes), H) | set_bits(Mask, next_idx(Mask, Indexes), T)].
 
