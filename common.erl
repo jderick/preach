@@ -38,7 +38,8 @@ start(P) ->
     io:format("PReach $Rev: 408 $~n", []),
     T0 = now(),
     Local = is_localMode(),
-    if Local ->
+    Intel = is_intelMode(),
+    if Local orelse Intel ->
 	    ok;
        true ->
 	    Args = "-pa " ++ os:getenv("PREACH_ROOT") ++ " -rundir " ++ os:getenv("PWD") ++ " -model " ++ model_name(),
@@ -411,16 +412,10 @@ hosts() ->
             [list_to_atom(second(inet:gethostname()))]
     end.
 
-%%----------------------------------------------------------------------
-%% Function: is_localMode/0
-%% Purpose : Identify if localmode flag was passed to preach
-%% Args    : 
-%%           
-%%
-%% Returns : true or false
-%%     
-%%----------------------------------------------------------------------
+
 is_localMode() -> init:get_argument(localmode) /= error.
+
+is_intelMode() -> init:get_argument(intel) /= error.
 
 model_name() -> 
     Name0 = init:get_argument(model),
@@ -435,7 +430,7 @@ model_name() ->
 rundir() -> 
     Name0 = init:get_argument(rundir),
     if (Name0 == error) ->
-	    os:getenv("PWD");
+	    filename:absname("");
        true ->
 	    {_,Name} = Name0,
 	    hd(hd(Name))
