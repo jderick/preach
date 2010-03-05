@@ -80,6 +80,8 @@ n2@host7435
 n3@host7435
 n4@host7435
 
+Next, login to the hosts in this file to make sure you can ssh uninteractively
+
 Then run 
 
 erl  -rsh ssh -sname foo -pa $PREACH_ROOT  -run preach run -model blah
@@ -100,7 +102,7 @@ Caveats........................................................................
   running programs (including other preach instances) that use such files.
   we should probably fix this.
 
-
+* Running with 2 threads on one machine seems to sometimes cause problems
 
 
 Preach Command Line Arguments.....................................................
