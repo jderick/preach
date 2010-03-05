@@ -19,6 +19,10 @@ Setup & Compiling Preach........................................................
 
 PReach requires Erlang, which can be downloaded here:
 www.erlang.org/download.html
+
+We are using version otp_src_R13B02-1.  We cannot guarantee
+compatibility with other versions.
+
 Or if you are within Intel, you might be able to use the path in the setup file.
 
 Edit the defs of PREACH_ROOT and PREACH_TEMP in ./setup appropriately; these
