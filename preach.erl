@@ -263,5 +263,7 @@ profiling(#r{selfbo=SelfBo,count=Count, t0=T0, sent=NumSent, recd=NumRecd, wq=Wo
        true -> nop
     end.
 
+log(Format, Vars) ->
+    io:format("~s.~w: " ++ Format ++ "~n", [second(inet:gethostname()), self()] ++ Vars).
 
 dequeue(Q) -> diskq:dequeue(Q).

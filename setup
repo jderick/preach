@@ -1,4 +1,5 @@
 # YOU MUST CONFIGURE THESE VARS PRIOR TO RUNNING
+# Copy this file to ~/.preach_setup and source it from your ~/.cshrc.$USER file
 
 setenv PREACH_ROOT /path/to/preach/files
 setenv PREACH_SSH "ssh"
@@ -22,7 +23,16 @@ setenv ERLANG_BIN ${ERLANG_PREFIX}/bin
 setenv PATH ${PREACH_ROOT}:${ERLANG_BIN}:${PATH}
 
 # May be necessary if mutiple users are running jobs on same machines
+
 #setenv ERL_EPMD_PORT 4370
+
+
+# Used within Intel for Netbatch
+
+#setenv PREACH_SLOT /proj/valid/env
+#setenv PREACH_QUEUE linux1
+#setenv PREACH_CLASS SLES_X_nosusp
+#setenv PATH ${PREACH_ROOT}/Intel:${PATH}
 
 rehash
 

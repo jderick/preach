@@ -1,0 +1,78 @@
+#!/bin/csh
+
+setenv PREACH_MACHINE `hostname`
+
+set argv=`getopt -o r:c -u -l rundir: -- $*`
+
+if ( $status != 0 ) exit 1
+
+if ( ! $?PREACH_SLOT ) then
+  echo PREACH_SLOT not defined
+  exit 1
+endif
+
+if ( ! $?PREACH_QUEUE ) then
+  echo PREACH_QUEUE not defined
+  exit 1
+endif
+
+if ( ! $?PREACH_CLASS ) then
+  echo PREACH_CLASS not defined
+  exit 1
+endif
+
+set LOGDIR = run.`date +%s`
+
+set slot = $PREACH_SLOT
+set queue = $PREACH_QUEUE
+set class = $PREACH_CLASS
+
+while (1)
+ switch ($1)
+  case --rundir:
+  case -r:
+    if( -e $2) then
+	set LOGDIR = $2.`date +%s`
+    else
+	set LOGDIR = $2
+    endif
+    shift
+    shift
+    continue
+  case -c:
+    set queue = vlinux5
+    set class = SLES9_EM64T_4G
+    shift
+    continue
+  case --:
+    shift
+    break
+  default:
+    echo ERROR: unexpected argument $1
+    exit 1
+ endsw
+end
+
+set nodes = $1
+shift
+
+set model = $1
+
+echo $LOGDIR
+mkdir $LOGDIR
+
+
+cp $PREACH_ROOT/Intel/prun $LOGDIR
+cp $PREACH_ROOT/*.beam $LOGDIR
+cp $PREACH_ROOT/*.erl $LOGDIR
+cp ${model}.so $LOGDIR
+cp ${model}.m $LOGDIR
+cp $PREACH_ROOT/Intel/diskmon $LOGDIR
+cp $PREACH_ROOT/Intel/erlmon $LOGDIR
+cp $PREACH_ROOT/Intel/erlsetup $LOGDIR
+cp $PREACH_ROOT/setup $LOGDIR
+
+cd $LOGDIR
+
+nbjob run --target $queue --log-file "${model}.log" --qslot $slot --class $class' && fDS("/netbatch") > 80000 && CPUCount >= 4' --parallel "slots=${nodes},exit_on_master_finish=true" prun $* 
+
