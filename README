@@ -90,6 +90,32 @@ Then run
 
 erl  -rsh ssh -sname foo -pa $PREACH_ROOT  -run preach run -model blah
 
+Running with Netbatch inside Intel.............................................
+
+Make sure you source your setup file from within your ~/.cshrc.<user> 
+file.  Also it is important that a "no suspend" (nosusp) netbatch class is 
+used.  The netbatch class is defined in your setup file.  Once the 
+class is set appropriately, you can do:
+
+>nbrun 8 blah
+
+to run blah on 8 nodes.  If you want to specify the name of the run directory, 
+do
+
+> nbrun 8 blah -r blah.rundir
+
+which will create a subdir blah.rundir in the current directory wherein (once 
+the job is run by netbatch) will contain (among other things) the main 
+logfile blah.log.  Without specifying blah.rundir, you will get a run dir named 
+something like run.123456789.
+
+You can run nbrun with arguments that will get passed to preach.
+You need to use -- to do this
+
+> nbrun 8 blah -r blahdir -- -nosym -m 1000
+
+
+
 Caveats........................................................................
 
 * Preach (or perhaps Erlang) has an outstanding bug where occasionally it will

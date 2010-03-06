@@ -153,8 +153,7 @@ detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict) ->
                               end,
                               Others),
                     checkAck(Others),
-                    OwnerPid = owner(State,Names),
-                    OwnerPid ! {find_prev, State, []},
+                    PID ! {find_prev, State, []},
                     receive trace_complete -> lists:map(fun(X) -> X ! die end, tuple_to_list(Names)) end,
                     cex
             end
