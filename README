@@ -28,8 +28,8 @@ Or if you are within Intel, you might be able to use the path in the setup file.
 Edit the defs of PREACH_ROOT and PREACH_TEMP in ./setup appropriately; these
 should be the absolute paths to the directory where the preach sources live
 and the directory where preach will create the trace file and diskq
-during runtime, respectively.  Also ERLANG_ROOT should point to an Erlang
-installation; within Intel the default value should work. The contents of setup
+during runtime, respectively.  Also ERLANG_PREFIX should point to an Erlang
+installation; see the setup file for more details.  The contents of setup
 should then be added to your ~/.cshrc.* file, and sourced:
 
 > source setup
