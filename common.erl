@@ -73,7 +73,7 @@ start(P) ->
 		    Dur = timer:now_diff(now(), T0)*1.0e-6,
 		    {CpuTime,_} = statistics(runtime),
 		    io:format("----------~n" ++
-			      "REPORT:~n" ++
+			      "VERIFICATION SUCCESSFUL:~n" ++
 			      "\tTotal of ~w states visited (this only accurate if no error or in localmode)~n" ++
 			      "\tExecution time: ~f seconds~n" ++
 			      "\tStates visited per second (real time): ~w~n" ++
