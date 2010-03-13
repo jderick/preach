@@ -1,14 +1,8 @@
 PReach : A distributed model checker for Murphi
 
-PReach was developed and is owned by the formal verification team on Larabee2
-(in collaboration with the University of British Columbia).
-Since we are a product team and not a tools team, we cannot make any hard
-guarantees of support.  That said, we want to see PReach used by others and
-will do our best to be supportive.
-
-A public release under the BSD license is pending.  Currently, we ask that 
-PReach is not forwarded (even within Intel) or modified without our approval.  
-Please report any bugs or problems you may encounter.
+PReach was developed and is owned by a formal verification team at Intel
+in collaboration with Brad Bingham and Flavio De Paula at 
+the University of British Columbia.
 
 Jesse Bingham jesse.d.bingham@intel.com
 John Erickson john.erickson@intel.com
@@ -49,7 +43,7 @@ less than 30 seconds.  The test was successful if you see something this
 near the bottom of the output:
 
 ----------
-REPORT:
+VERIFICATION SUCCESSFUL:
 	Total of 35159 states visited (this only accurate if no error or in localmode)
 ...
 
@@ -132,7 +126,8 @@ Caveats........................................................................
   running programs (including other preach instances) that use such files.
   we should probably fix this.
 
-* Running with 2 threads on one machine seems to sometimes cause problems
+* Running with (exactly) 2 threads that are both on one machine seems to 
+  sometimes cause problems
 
 
 Preach Command Line Arguments.....................................................
