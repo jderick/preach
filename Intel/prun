@@ -25,6 +25,8 @@ chomp $PREACH_TIMESTAMP;
 
 open HOSTFILE, ">hosts";
 
+$USER = $ENV{USER};
+
 $hostcount = 1;
 
 for $host (@hostlist) {
