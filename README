@@ -154,6 +154,11 @@ Preach Command Line Arguments...................................................
 
 -pr N4      print profiling information every N4 states.  default is 10000
 
+-lbr N5     Using load balancing, which means whenever a worker node's
+            work queue is empty, it is sent N5 percent of the states from
+            the peer worker with the longest work queue.  By default
+            N5=0, which turns off the load balancing mechanism.  
+            Typically we use 50 for this parameter.
 
 
 Contacts.................................................................
