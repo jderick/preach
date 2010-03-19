@@ -8,39 +8,32 @@
 #
 # this will create a file plotwq.eps, and also launch ghostview (gv)
 # on it.  The plot has x-axis being time (seconds) and y-axis
-# being wq length.  The hosts that are plotted are controlled by
+# being wq length.  The nodes that are plotted are controlled by
 # <args>:
 #  
-#  * if <args> is empty, then a single host is picked at random
-#  * if <args> is a non-empty list of hosts, those hosts are
+#  * if <args> is empty, then a single node is picked at random
+#  * if <args> is a non-empty list of nodes, those nodes are
 #    plotted
-#  * if <args> is all, then all hosts are plotted
+#  * if <args> is all, then all nodes are plotted
 #
-# This script assume gnuplot is in your path.
+# This script assume gnuplot and gv is in your path.
 #
 
 my $log = shift;
-#my $host = shift;
 my $gtemp = "g.temptemp";
 
 open(LOG,$log)  || die "could not open $log";
-my @all_hosts;
-my $random_host;
+my @all_nodes;
+my $random_node;
 
 my $root;
 if (1) {
   while (<LOG>) {
     if (/Starting worker thread on \w+\@(\w+) with PID (.*)/) {
-      my $host = "$1.$2";
-      chomp $host;
-      @all_hosts = (@all_hosts,$host);
+      my $node = "$1.$2";
+      chomp $node;
+      @all_nodes = (@all_nodes,$node);
     }
-      if (/Sending tc to (.*)/) {
-         $tc{$1} = 1;
-      }
-      if (/Received ack from (.*)/) {
-         delete $tc{$1};
-      }
   }
 } else {
   while (<LOG>) {
@@ -51,36 +44,36 @@ if (1) {
   }
   while (<LOG>) {
     if (/NB_PARALLEL_JOB_HOSTS=(.+)/) {
-      @all_hosts = ($root,split(/ /,$1));
+      @all_nodes = ($root,split(/ /,$1));
       last;
     }
   }
 }
-#print join("\n",keys %tc); exit;
 
-#print join("\n",@all_hosts); exit;
-my @hosts;
-if (!@ARGV) {
-  my $i = int(rand()*(@hosts));
-  @hosts = ($hosts[$i]);
+#print join("\n",@all_nodes); exit;
+my @nodes;
+if (! @ARGV) {
+  my $i = int(rand()*(@all_nodes));
+  @nodes = ($all_nodes[$i]);
+  print @nodes;  print "\n";
 } elsif ($ARGV[0] eq "all") {
-  @hosts = @all_hosts;
+  @nodes = @all_nodes;
 } else {
-  @hosts = @ARGV;
+  @nodes = @ARGV;
 }
 
 #
-# remove duplicates from @hosts
+# remove duplicates from @nodes
 #
-my %hash   = map { $_, 1 } @hosts;	
-@hosts = keys %hash;
+my %hash   = map { $_, 1 } @nodes;	
+@nodes = keys %hash;
 
 my $eps = "plotwq.eps";
-#my $temp = "$host.gnuplot.data";
+#my $temp = "$node.gnuplot.data";
 #open(TEMP,">$temp")  || die "could not open $temp";
 
 my %data_files;
-foreach my $h (@hosts) {
+foreach my $h (@nodes) {
   my $temp = "$h.gnuplot.data";
   open($data_files{$h},">$temp")  || die "could not open $temp";
 }
@@ -89,19 +82,19 @@ close(LOG);
 open(LOG,$log)  || die "could not open $log";
 while (<LOG>) {
   if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states explored in (\d+) s .* (\d+) states in the queue/) {
-    my $host = $1;
+    my $node = $1;
     my $states = $2;
     my $secs = $3;
     my $q = $4;
-    if ($data_files{$host}) {
-       my $FH = $data_files{$host};
+    if ($data_files{$node}) {
+       my $FH = $data_files{$node};
        print $FH "$secs $q\n";
     }
   }
 }
 
 close LOG;
-foreach my $h (@hosts) {
+foreach my $h (@nodes) {
   close($data_files{$h});
 }
 
@@ -114,10 +107,10 @@ set ylabel \"WQ size\"
 set xlabel \"Seconds\"
 plot \\
 "; 
-for (my $i=0;$i<@hosts;$i++) {
-  my $temp = $hosts[$i].".gnuplot.data";
+for (my $i=0;$i<@nodes;$i++) {
+  my $temp = $nodes[$i].".gnuplot.data";
   print GTEMP "   \"$temp\" using 1:2";
-  print GTEMP ", \\" if $i < @hosts-1;
+  print GTEMP ", \\" if $i < @nodes-1;
   print GTEMP "\n";
   
 }

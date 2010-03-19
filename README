@@ -69,14 +69,18 @@ For non-local mode first make sure the contents of setup are pasted
 into your ~/.cshrc.<user> file.  Populate a "hosts" file with the
 names of node@host in this form:
 
-n1@host7436
-n2@host7436
-n3@host7436
-n4@host7436
-n1@host7435
-n2@host7435
-n3@host7435
-n4@host7435
+n1@machine1
+n2@machine1
+n3@machine1
+n4@machine1
+n1@machine2
+n2@machine2
+n3@machine2
+n4@machine2
+
+Here machine1 and machine2 are placeholders for real machine domain names, 
+while n1, n2,.. should literally appear in the host file when multiple compute
+nodes are to be run on the same host.
 
 Next, login to the hosts in this file to make sure you can ssh uninteractively
 
@@ -160,6 +164,11 @@ Preach Command Line Arguments...................................................
             N5=0, which turns off the load balancing mechanism.  
             Typically we use 50 for this parameter.
 
+Utilities.................................................................
+
+There is a perl script Intel/plotwq that uses gnuplot to create plots
+of work queue lengths based on Preach log files.  See the comment at
+the top of Intel/plotwq for usage.
 
 Contacts.................................................................
 
