@@ -38,7 +38,7 @@ To run a test (single-threaded) do:
 > cd ./test
 > ./test
 
-This runs a short model check on german's protocol, which should take
+This runs a short model check on Peterson's protocol, which should take
 less than 30 seconds.  The test was successful if you see something this
 near the bottom of the output:
 
