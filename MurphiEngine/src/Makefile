@@ -39,7 +39,7 @@
 CPLUSPLUS = g++
 
 # choice of the options
-CFLAGS = -O4                               # options for g++
+CFLAGS = -O4 -Wno-write-strings             # options for g++
 #CFLAGS = -O4 -pipe -static #
 #CFLAGS = -static #
 #CFLAGS = -w #                              # options for OCC
