@@ -144,14 +144,14 @@ Preach Command Line Arguments...................................................
 -ndl        turns off deadlock detection, which is on by default
 
 -bob N1     back-off kicks in whenever a node's erlang runtime message queue grows
-            beyond N messages long.  By default back-off is off.  Having back-off
+            beyond N messages long.  By default N1 = 10,000.  Having back-off
             set too high (or off) can lead to nodes spacing out for large
-            models.  Having it too low can lead to preach deadlocking.
-            irrelevant if in localmode.
+            models.  Having it too low can lead to too unnecessary performance
+            degradation.  irrelevant if in localmode.  to turn back-off off,
+            use N1 = 0.
 
 -unbob N2   un-back-off when in back-off mode and message queue shrinks to 
-            N messages.  Defaults to N1/2 if -bob N1 is give, but -unbob is not.
-            irrelevant if in localmode or if -bob N1 not given.
+            N messages.  Defaults to N1/10.  irrelevant if in localmode.
 
 -m N3       make the murphi hash table at each node use N3 Megabytes.
             If not given, this defaults to 1024 (1 GB).
