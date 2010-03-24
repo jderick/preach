@@ -1,0 +1,68 @@
+#!/usr/bin/perl
+#
+# A utility for plotting unique reached state counts against time 
+# from a preach log file.
+# 
+# usage:
+# plotrs mymodel.log 
+#
+# this will create a file plotrs.eps, and also launch ghostview (gv)
+# on it.  The plot has x-axis being time (seconds) and y-axis
+# being the unique reached states (summed across all nodes).
+# so unlike plotwq where the plot as a curve for each node, plotrs
+# will just have a single curve.
+#
+# This script assume gnuplot and gv is in your path.
+#
+
+my $log = shift;
+my $gtemp = "g.temptemp";
+
+open(LOG,$log)  || die "could not open $log";
+
+my $eps = "plotrs.eps";
+
+my $temp = "rs.gnuplot.data";
+open(TEMP,">$temp")  || die "could not open $temp";
+
+open(LOG,$log)  || die "could not open $log";
+my %hash;
+my $total = 0;
+while (<LOG>) {
+  if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states explored in (\d+) s/) {
+    my $node = $1;
+    my $states = $2;
+    my $secs = $3;
+    my $q = $4;
+    $hash{$node} = 0 unless $hash{$node};
+    $total -= $hash{$node};
+    $total += $states;
+    $hash{$node} = $states;
+    print TEMP "$secs $total\n";
+  }
+}
+
+close LOG;
+foreach my $h (@nodes) {
+  close($data_files{$h});
+}
+
+open(GTEMP,">$gtemp")  || die "could not open $gtemp";
+print GTEMP "
+set nokey
+set terminal postscript color
+set data style lines
+set ylabel \"Unique Reached States\"
+set xlabel \"Seconds\"
+plot \"$temp\" using 1:2
+"; 
+close GTEMP;
+
+system "gnuplot $gtemp > $eps";
+
+#unlink $temp;
+#unlink $gtemp;
+
+system "gv $eps &";
+
+

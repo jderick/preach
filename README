@@ -166,9 +166,11 @@ Preach Command Line Arguments...................................................
 
 Utilities.................................................................
 
-There is a perl script Intel/plotwq that uses gnuplot to create plots
-of work queue lengths based on Preach log files.  See the comment at
-the top of Intel/plotwq for usage.
+There are two perl scripts Intel/plotwq and Intel/plotrs 
+that uses gnuplot to create plots
+of work queue lengths and uniques reached state counts, repectively,
+using info from Preach log files.  See the comment at
+the top of these scripts for usage.
 
 Contacts.................................................................
 
