@@ -7,7 +7,7 @@
 # usage:
 # plot mymodel.log <tag> <args>
 #
-# this will create a file plotlog.eps, and also launch ghostview (gv)
+# this will create a file plot_<tag>.eps, and also launch ghostview (gv)
 # on it.  The plot has x-axis being time (seconds) and y-axis
 # being state counts, depending on the mandatory argument <tag>:
 #
@@ -20,17 +20,18 @@
 # 
 #  The nodes that are plotted are controlled by <args>:
 #  
+#  * if <args> = all, then all nodes are plotted
+#    (this is the most common we use it)
 #  * if <args> is empty, then a single node is picked at random
 #  * if <args> is a non-empty list of nodes, those nodes are
 #    plotted
-#  * if <args> is all, then all nodes are plotted
 #
-# This script assume gnuplot and gv is in your path.
+# This script assumes gnuplot and gv are in your $path.
 #
 
 my $log = shift;
 my $tag = shift;
-($tag =~ /^(eq|ht|es)$/) || die "tag arg must be one of eq, ht, or es";
+($tag =~ /^(wq|ht|es)$/) || die "tag arg must be one of wq, ht, or es";
 my $gtemp = "g.temptemp";
 
 open(LOG,$log)  || die "could not open $log";
@@ -79,7 +80,7 @@ if (! @ARGV) {
 my %hash   = map { $_, 1 } @nodes;	
 @nodes = keys %hash;
 
-my $eps = "plotlog.eps";
+my $eps = "plot_$tag.eps";
 #my $temp = "$node.gnuplot.data";
 #open(TEMP,">$temp")  || die "could not open $temp";
 
@@ -104,7 +105,7 @@ while (<LOG>) {
           print $FH "$secs $q\n";
        } elsif ($tag eq 'ht') {
           print $FH "$secs $hstates\n";
-       } else
+       } else {
           print $FH "$secs $estates\n";
        }
     }
@@ -114,6 +115,14 @@ while (<LOG>) {
 close LOG;
 foreach my $h (@nodes) {
   close($data_files{$h});
+}
+
+if ($tag eq 'wq') {
+   $ylabel = "Work Queue States";
+} elsif ($tag eq 'ht') {
+   $ylabel = "Hash Table States";
+} else {
+   $ylabel = "Expanded States";
 }
 
 open(GTEMP,">$gtemp")  || die "could not open $gtemp";
