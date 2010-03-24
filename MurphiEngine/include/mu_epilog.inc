@@ -209,6 +209,7 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
       } else {
         int i = 0;
         ei_encode_version(d->state_buffer, &i);
+#define LOAD_BALANCING
 #ifdef LOAD_BALANCING
 	ei_encode_tuple_header(d->state_buffer, &i, 3);
 	ei_encode_atom(d->state_buffer, &i, "error");
