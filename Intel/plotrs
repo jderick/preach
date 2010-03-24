@@ -27,19 +27,26 @@ open(TEMP,">$temp")  || die "could not open $temp";
 
 open(LOG,$log)  || die "could not open $log";
 my %hash;
+my @array;
 my $total = 0;
 while (<LOG>) {
-  if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states explored in (\d+) s/) {
+  if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states in the queue/) {
     my $node = $1;
-    my $states = $2;
-    my $secs = $3;
-    my $q = $4;
+    my $estates = $2;
+    my $hstates = $3;
+    my $secs = $4;
+    my $q = $5;
     $hash{$node} = 0 unless $hash{$node};
     $total -= $hash{$node};
-    $total += $states;
-    $hash{$node} = $states;
-    print TEMP "$secs $total\n";
+    $total += $hstates;
+    $hash{$node} = $hstates;
+    $array[$secs] = $total;
   }
+}
+for (my $i=0;$i<@array;$i++) {
+   if (defined $array[$i]) {
+      print TEMP "$i $array[$i]\n";
+   }
 }
 
 close LOG;
