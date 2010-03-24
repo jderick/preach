@@ -6,7 +6,8 @@
    {tf, % tracefile
     wq, % work queue
     ss, % state set
-    count, % # states in hash file
+    hcount, % # states in hash file
+    count, % # states expanded
     names, % process list
     id, % index into names array 
     term, % terminator pid
@@ -578,7 +579,7 @@ second({_,X}) -> X.
 startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profiling_rate,UseLB) ->
     log("startWorker() entered (model is ~s;UseSym is ~w;CheckDeadlocks is ~w,UseLB is ~w)~n", 
          [ModelName,UseSym,CheckDeadlocks,UseLB],1),
-    crypto:start(),
+    %crypto:start(),
     receive {Names, names} -> do_nothing end,
     receive {trace_handler, TraceH} -> nop end,
     receive {terminator, Terminator} -> nop end,
@@ -595,7 +596,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     case (catch reach(#r{ss=null,
     %% ENDIF
         names=Names, term=Terminator, th=TraceH,
-        sent=0, recd=0, count=0, bov=initBov(Names), selfbo=false, 
+        sent=0, recd=0, count=0, hcount=0,bov=initBov(Names), selfbo=false, 
         wq=WQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), profiling_rate = Profiling_rate, bo_stats = {0,0,0} })) 
@@ -633,10 +634,10 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
 %% Returns : done
 %%     
 %%----------------------------------------------------------------------
-reach(R=#r{names=Names, count=Count, sent=NumSent, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks} ) ->
+reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks} ) ->
    case recvStates(R) of
    done -> log("reach is done",[], 5), done;
-   R2=#r{wq=WorkQueue, tf=TF, bov=Bov, bo_stats=BoStats} ->
+   R2=#r{wq=WorkQueue, tf=TF, bov=Bov, sent=NumSent, bo_stats=BoStats} ->
        {[State], Q2} = dequeue(WorkQueue),
        if Recycling -> % prevent too much printing during recycling
           nop;
@@ -714,7 +715,7 @@ secondsSince(T0) ->
 %%        NewStates is an accumulating list of the new received states;
 %%           QSize keeps track of the size of the working Queue
 %%----------------------------------------------------------------------
-recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, tf=TF, t0=T0,
+recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, wq=WorkQ, tf=TF, t0=T0,
       th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym,
       bo_bound=BoBound, unbo_bound=UnboBound, lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats }) ->
     WQSize = count(WorkQ),
@@ -734,7 +735,7 @@ recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, tf=TF, t0
        recvStates(R#r{lb_pending=true});
     true ->
        if (WQSize == 0) ->
-          TermDelay = spawn(?MODULE, doneNotDone, [Terminator, NumSent, NumRecd, NumStates, BoStats]),
+          TermDelay = spawn(?MODULE, doneNotDone, [Terminator, NumSent, NumRecd, Hcount, BoStats]),
           Timeout = 60000;
        true -> 
           TermDelay = none,
@@ -749,7 +750,7 @@ recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, tf=TF, t0
              if Test == false -> % State not present
                 Q2 = enqueue(WorkQ,State),   
                 TF2 = diskq:enqueue(TF, {State, Prev}),
-                recvStates(R#r{recd=NumRecd+1, wq=Q2, tf=TF2});
+                recvStates(R#r{recd=NumRecd+1, wq=Q2, tf=TF2, hcount=(Hcount+1)});
              true -> 
                 recvStates(R#r{recd=NumRecd+1})
              end;
@@ -761,18 +762,18 @@ recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, tf=TF, t0
              LBPid !  {wq_query_response,WQSize,self()},
              recvStates(R);
           {send_some_of_your_wq_to,IdlePid,Ratio} -> 
-             log("sending ~w percent of my states to ~w", [Ratio,IdlePid]),
-             NumberToSend = (Ratio * WQSize) div 100,
+             NumberToSend0 = (Ratio * WQSize) div 100,
+             NumberToSend = if (NumberToSend0 > 10000) -> 10000; true -> NumberToSend0 end,
              {StateList,Q2} = dequeueMany(WorkQ, NumberToSend),
              IdlePid ! {extraStateList, StateList},
-             %%recvStates(R#r{sent=NumSent+NumberToSend, wq=Q2});
-             recvStates(R#r{sent=NumSent, wq=Q2});
+             recvStates(R#r{sent=NumSent+NumberToSend, wq=Q2});
+             %recvStates(R#r{sent=NumSent, wq=Q2});
           {extraStateList, StateList} -> 
              StateListLen = length(StateList),
              log("got ~w extra states", [StateListLen]),
              Q2 = enqueueMany(WorkQ, StateList),
-             %%recvStates(R#r{recd=NumRecd+StateListLen,wq=Q2, lb_pending=(StateList == [])});
-             recvStates(R#r{recd=NumRecd,wq=Q2, lb_pending=(StateList == [])});
+             recvStates(R#r{recd=NumRecd+StateListLen,wq=Q2, lb_pending=(StateList == [])});
+             %recvStates(R#r{recd=NumRecd,wq=Q2, lb_pending=(StateList == [])});
           {backoff,Pid} ->
              log("got backoff from ~w",[Pid]),
              ets:insert(Bov, {Pid, true}),
@@ -801,17 +802,17 @@ recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, wq=WorkQ, tf=TF, t0
 
 
 
-profiling(#r{selfbo=SelfBo,count=Count, t0=T0, sent=NumSent, recd=NumRecd, wq=WorkQ,profiling_rate=PR})->
+profiling(#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, wq=WorkQ,profiling_rate=PR})->
     if Count rem PR == 0 ->
        Runtime = secondsSince(T0),
        %{_, Mem} = process_info(self(),memory),
        {CpuTime,_} = statistics(runtime),
        WorkQ_heapSize =  erts_debug:flat_size(WorkQ) * 8, 
-       log( "~w states explored in ~w s (~.1f per sec) (cpu time: ~.1f; ~.1f per second ) " ++
+       log( "~w states expanded; ~w states in hash table, in ~w s (~.1f per sec) (cpu time: ~.1f; ~.1f per second ) " ++
             "with ~w states sent, ~w states received " ++
             "and ~w states in the queue (which is ~w bytes of heap space) " ++ 
             "and Backoff = ~w",
-            [Count, Runtime, Count / Runtime, CpuTime / 1000.0, 1000 * Count / CpuTime ,
+            [Count, Hcount, Runtime, Count / Runtime, CpuTime / 1000.0, 1000 * Count / CpuTime ,
              NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, SelfBo ],1);
        true -> nop
     end.
