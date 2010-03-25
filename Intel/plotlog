@@ -5,20 +5,18 @@
 # file is still in flux) or after preach completion.
 # 
 # usage:
-# plot mymodel.log <tag> <args>
+# plot mymodel.log <args>
 #
-# this will create a file plot_<tag>.eps, and also launch ghostview (gv)
-# on it.  The plot has x-axis being time (seconds) and y-axis
-# being state counts, depending on the mandatory argument <tag>:
+# this will create four eps files, each being a plot
+# with x-axis being time (seconds) and y-axis as follows:
 #
-#  * if <tag> is wq, then the y-axis is work queue length
-#  * if <tag> is ht, then the y-axis is the number of states
-#    in the hash table, which is equal to the number of unique
-#    reached states owned by each node.
-#  * if <tag> is es, then the y-axis is the number of states
-#    successfully expanded by the node.
+#  * wq_plot.eps : y-axis is size of work queue in states
+#  * ht_plot.eps : y-axis is size of hash table in states
+#  * se_plot.eps : y-axis is number of states expanded
+#  * bo_plot.eps : y-axis is number of nodes in back-off mode
 # 
-#  The nodes that are plotted are controlled by <args>:
+#  bo_plot.eps has just a single curve plotted.  For the others,
+#  <args> controls which nodes are plotted:
 #  
 #  * if <args> = all, then all nodes are plotted
 #    (this is the most common we use it)
@@ -30,11 +28,13 @@
 #
 
 my $log = shift;
-my $tag = shift;
-($tag =~ /^(wq|ht|es)$/) || die "tag arg must be one of wq, ht, or es";
-my $gtemp = "g.temptemp";
+#my $tag = shift;
+mkdir 'plotlog.data';
+chdir 'plotlog.data';
+#($tag =~ /^(wq|ht|es|bo)$/) || die "tag arg must be one of wq, ht, es, or bo";
 
-open(LOG,$log)  || die "could not open $log";
+$log = "../$log";
+open(LOG,"$log")  || die "could not open $log";
 my @all_nodes;
 my $random_node;
 
@@ -80,74 +80,107 @@ if (! @ARGV) {
 my %hash   = map { $_, 1 } @nodes;	
 @nodes = keys %hash;
 
-my $eps = "plot_$tag.eps";
-#my $temp = "$node.gnuplot.data";
-#open(TEMP,">$temp")  || die "could not open $temp";
 
 my %data_files;
 foreach my $h (@nodes) {
   my $temp = "$h.gnuplot.data";
   open($data_files{$h},">$temp")  || die "could not open $temp";
 }
+open(BO_DATA,">bo.data")  || die "could not open bo.data";
+my $bo_count = 0;
+my $max_time = 0;
 
 close(LOG);
 open(LOG,$log)  || die "could not open $log";
 while (<LOG>) {
-  if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states in the queue/) {
-    my $node = $1;
-    my $estates = $2;
-    my $hstates = $3;
-    my $secs = $4;
-    my $q = $5;
-    if ($data_files{$node}) {
-       my $FH = $data_files{$node};
-       if ($tag eq 'wq') {
-          print $FH "$secs $q\n";
-       } elsif ($tag eq 'ht') {
-          print $FH "$secs $hstates\n";
-       } else {
-          print $FH "$secs $estates\n";
+  #if ($tag eq 'bo') {
+     if (/(\w+\.<\d+\.\d+.\d+>): Sending BACKOFF at (\d+) s/) {
+       my $node = $1;
+       $secs = $2;
+       die "wtf?" if $backoff{$node};
+       $backoff{$node} = 1;
+       ++$bo_count;
+       print BO_DATA "$secs $bo_count\n";
+     } elsif (/(\w+\.<\d+\.\d+.\d+>): Sending UNBACKOFF at (\d+) s/) {
+       my $node = $1;
+       $secs = $2;
+       die "wtf?" if !$backoff{$node};
+       delete $backoff{$node};
+       --$bo_count;
+       print BO_DATA "$secs $bo_count\n";
+       $max_time = $max_time < $secs ? $secs : $max_time;
+     }
+  #} else {
+     if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states received and (\d+) states in the queue/) {
+       my $node = $1;
+       my $estates = $2;
+       my $hstates = $3;
+       $secs = $4;
+       my $recvd = $5;
+       my $recvd_per_sec = $5/$4;
+       my $q = $6;
+       if ($data_files{$node}) {
+          my $FH = $data_files{$node};
+          print $FH "$secs $q $hstates $estates $recvd_per_sec\n";
        }
-    }
-  }
+     }
+  #}
+   $max_time = $max_time < $secs ? $secs : $max_time;
 }
 
 close LOG;
 foreach my $h (@nodes) {
   close($data_files{$h});
 }
+print BO_DATA "$max_time $bo_count\n";
+close BO_DATA;
 
-if ($tag eq 'wq') {
-   $ylabel = "Work Queue States";
-} elsif ($tag eq 'ht') {
-   $ylabel = "Hash Table States";
-} else {
-   $ylabel = "Expanded States";
+plotit('lines','Work Queue States',2,'wq');
+plotit('lines','Hash Table States',3,'ht');
+plotit('lines','Expanded States',4,'es');
+plotit('lines','States Recvd per Second',5,'sr');
+plotit('histeps','Backoff Mode Nodes',2,'bo');
+
+print "the following nodes are currently in backoff mode:\n[";
+foreach my $n (keys %backoff) {
+   print "$n ";
+}
+print "]\n";
+
+#system "gv wq_plot.eps &";
+#system "gv se_plot.eps &";
+#system "gv ht_plot.eps &";
+#system "gv bo_plot.eps &";
+
+sub plotit($$$$) {
+   my ($style,$ylabel,$col,$tag) = @_;
+   my $gtemp = "temp";
+   open(GTEMP,">$gtemp")  || die "could not open $gtemp";
+   print GTEMP "
+   set nokey
+   set terminal postscript color
+   set data style $style
+   set ylabel \"$ylabel\"
+   set xlabel \"Seconds\"
+   plot \\
+   "; 
+   if ($tag eq 'bo') {
+        print GTEMP "  \"bo.data\" using 1:$col with $style";
+   } else {
+      for (my $i=0;$i<@nodes;$i++) {
+        my $temp = $nodes[$i].".gnuplot.data";
+          print GTEMP "   \"$temp\" using 1:$col";
+          print GTEMP ", \\" if $i < @nodes-1;
+          print GTEMP "\n";
+        }
+  }
+  close GTEMP;
+  system "gnuplot $gtemp > ../${tag}_plot.eps";
 }
 
-open(GTEMP,">$gtemp")  || die "could not open $gtemp";
-print GTEMP "
-set nokey
-set terminal postscript color
-set data style lines
-set ylabel \"WQ size\"
-set xlabel \"Seconds\"
-plot \\
-"; 
-for (my $i=0;$i<@nodes;$i++) {
-  my $temp = $nodes[$i].".gnuplot.data";
-  print GTEMP "   \"$temp\" using 1:2";
-  print GTEMP ", \\" if $i < @nodes-1;
-  print GTEMP "\n";
-  
-}
-close GTEMP;
-
-system "gnuplot $gtemp > $eps";
 
 #unlink $temp;
 #unlink $gtemp;
 
-system "gv $eps &";
 
 
