@@ -24,6 +24,7 @@
     unbo_bound,% UnBackOff bound; when message queue gets this small and we're in back-off mode, we send Unbackoff
     checkdeadlocks,% 
     profiling_rate, % determines how often profiling info is spat out
+    profiling_calls, % keeps track of number of calls to profiling()
     lb_pending,
     lb_pid,
 	bo_stats % 2-tuple {BackoffCount, NumRecycledStates} to report as statistics
@@ -599,7 +600,8 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
         sent=0, recd=0, count=0, hcount=0,bov=initBov(Names), selfbo=false, 
         wq=WQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
-         bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), profiling_rate = Profiling_rate, bo_stats = {0,0,0} })) 
+         bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), 
+         profiling_calls=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0} })) 
     of
     {'EXIT',R} -> log("EXCEPTION ~w",[R]);
     _ -> ok
@@ -637,13 +639,14 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
 reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks} ) ->
    case recvStates(R) of
    done -> log("reach is done",[], 5), done;
-   R2=#r{wq=WorkQueue, tf=TF, bov=Bov, sent=NumSent, bo_stats=BoStats} ->
+   R1=#r{wq=WorkQueue, tf=TF, bov=Bov, sent=NumSent, bo_stats=BoStats} ->
        {[State], Q2} = dequeue(WorkQueue),
-       if Recycling -> % prevent too much printing during recycling
-          nop;
-       true ->
-          profiling(R)
-       end,
+     %  if Recycling -> % prevent too much printing during recycling
+     %     nop;
+     %  true ->
+     %     profiling(R)
+     %  end,
+       R2 = profiling(R1),
        NewStates = transition(State),
        case NewStates of 
        {error,ErrorMsg,RuleNum}  ->
@@ -715,18 +718,19 @@ secondsSince(T0) ->
 %%        NewStates is an accumulating list of the new received states;
 %%           QSize keeps track of the size of the working Queue
 %%----------------------------------------------------------------------
-recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, wq=WorkQ, tf=TF, t0=T0,
+recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, wq=WorkQ, tf=TF, t0=T0,
       th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym,
       bo_bound=BoBound, unbo_bound=UnboBound, lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats }) ->
+    R = profiling(R0),
     WQSize = count(WorkQ),
     Runtime = secondsSince(T0),
     {_, RuntimeLen} = process_info(self(),message_queue_len),
     if (SelfBo andalso (RuntimeLen < UnboBound)) ->
-       log("Sending UNBACKOFF", []),
+       log("Sending UNBACKOFF at ~w s", [Runtime]),
        sendAllPeers(goforit,Names),
        recvStates(R#r{selfbo=false});
     ((not SelfBo) andalso (RuntimeLen > BoBound)) ->
-       log("Sending BACKOFF, RuntimeLen is ~w, SelfBo is ~w", [RuntimeLen,SelfBo]),
+       log("Sending BACKOFF at ~w s, RuntimeLen is ~w, SelfBo is ~w", [Runtime,RuntimeLen,SelfBo]),
        sendAllPeers(backoff,Names),
 	   {BoCount,NumDisc,NumRecyc} = BoStats,
        recvStates(R#r{selfbo=true, bo_stats={BoCount+1,NumDisc,NumRecyc}});
@@ -802,8 +806,8 @@ recvStates(R=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, wq=W
 
 
 
-profiling(#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, wq=WorkQ,profiling_rate=PR})->
-    if Count rem PR == 0 ->
+profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, wq=WorkQ,profiling_rate=PR,profiling_calls=PC})->
+    if (PC == PR) ->
        Runtime = secondsSince(T0),
        %{_, Mem} = process_info(self(),memory),
        {CpuTime,_} = statistics(runtime),
@@ -813,8 +817,10 @@ profiling(#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=
             "and ~w states in the queue (which is ~w bytes of heap space) " ++ 
             "and Backoff = ~w",
             [Count, Hcount, Runtime, Count / Runtime, CpuTime / 1000.0, 1000 * Count / CpuTime ,
-             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, SelfBo ],1);
-       true -> nop
+             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, SelfBo ],1),
+       R#r{profiling_calls=0};
+    true ->
+       R#r{profiling_calls=PC+1}
     end.
 
 log(Format, Vars, Verbosity) ->
