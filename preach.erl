@@ -186,7 +186,7 @@ initThreads(Names, NumThreads) ->
     BoBound0 =  getintarg(bob,10000),
     Seed =  getintarg(seed,0),
     BoBound = if (BoBound0 == 0) -> infinity; true -> BoBound0 end,
-    UnboBound =  getintarg(unbob,if BoBound == infinity -> null; true -> (BoBound div 10) end ),
+    UnboBound =  getintarg(unbob,if BoBound == infinity -> null; true -> (BoBound div 20) end ),
     HashSize = getintarg(m,mDefault()),
     PR = getintarg(pr,5),
     LB = getintarg(lbr,0),
