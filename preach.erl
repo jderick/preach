@@ -5,6 +5,7 @@
 -record(r,
    {tf, % tracefile
     wq, % work queue
+    oq, % out queue
     ss, % state set
     hcount, % # states in hash file
     count, % # states expanded
@@ -282,11 +283,19 @@ tryToSendStates(PrevState, States, Names,Bov,Seed ) ->
     Owners = lists:map(fun(S) -> owner(S,Names,Seed) end, States),
     GottaBo = gottaBo(Owners,Bov),
     if (GottaBo) ->
-       false;
+	    false;
        true ->
-       sendStates(PrevState, States, Owners),
-       true
+	    sendStates(PrevState, States, Owners),
+	    true
     end.
+
+
+queueStates(PrevState, States, OutQ) ->
+    lists:foldl(fun(X, Q) ->
+			diskq:enqueue(Q, {X, PrevState})
+		end,
+		OutQ,
+		States).
 
 sendAllExcept(Msg,Names,Exception) -> 
     NamesList = tuple_to_list(Names),
@@ -457,6 +466,10 @@ initWorkQueue() ->
     diskq:open(tmp_disk_path() ++ "/workQueue." ++ atom_to_list(node()),
           getintarg(wqsize, 50000000000), getintarg(wqcache, 10000)).
 
+initOutQueue() ->
+    diskq:open(tmp_disk_path() ++ "/outQueue." ++ atom_to_list(node()),
+          getintarg(wqsize, 50000000000), getintarg(wqcache, 11000)).
+
 enqueue(Q, X) -> diskq:enqueue(Q, X).
 
 count(Q) -> diskq:count(Q).
@@ -594,6 +607,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     murphi_interface:start(rundir(), ModelName),
     murphi_interface:init_hash(HashSize),
     WQ = initWorkQueue(),
+    OQ = initOutQueue(),
     TF = initTraceFile(),
     %% IF YOU WANT BLOOM...
     %%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
@@ -602,7 +616,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     %% ENDIF
         names=Names, term=Terminator, th=TraceH,
         sent=0, recd=0, count=0, hcount=0,bov=initBov(Names), selfbo=false, 
-        wq=WQ, tf=TF, 
+        wq=WQ, oq=OQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), 
          last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed })) 
@@ -640,10 +654,11 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
 %% Returns : done
 %%     
 %%----------------------------------------------------------------------
+
 reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks, seed=Seed} ) ->
    case recvStates(R) of
    done -> log("reach is done",[], 5), done;
-   R1=#r{wq=WorkQueue, tf=TF, bov=Bov, sent=NumSent, bo_stats=BoStats} ->
+   R1=#r{wq=WorkQueue, oq=OutQ, tf=TF, bov=Bov, sent=NumSent, bo_stats=BoStats} ->
        {[State], Q2} = dequeue(WorkQueue),
      %  if Recycling -> % prevent too much printing during recycling
      %     nop;
@@ -678,22 +693,13 @@ reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, 
              TraceH ! {error_found, State},
              traceMode(Names, TF, TraceH, UseSym,Seed);
           true ->
-             SendSuccessful = tryToSendStates(State, NewCanonicalizedStates, Names, Bov,Seed),
-             if (SendSuccessful) ->
-                NewWQ = Q2,
-                NewNumSent = NumSent + length(NewCanonicalizedStates),
-                NewCount = Count+1,
-                NewRecycling = false,
-				NewBoStats = BoStats;
-             true ->
-                NewWQ = enqueue(Q2,State),
-                NewNumSent = NumSent,
-                NewCount = Count,
-                NewRecycling = true,
-				{BoCount, NumDisc,NumRecyc} = BoStats,
-				NewBoStats = {BoCount, NumDisc + length(NewCanonicalizedStates),NumRecyc+1}
-             end,
-             reach(R2#r{tf=TF, wq=NewWQ, count=NewCount, sent=NewNumSent, recyc=NewRecycling, bo_stats=NewBoStats})
+		  OutQ2 = queueStates(State, NewCanonicalizedStates, OutQ),
+		  NewWQ = Q2,
+		  NewNumSent = NumSent + length(NewCanonicalizedStates),
+		  NewCount = Count+1,
+		  NewRecycling = false,
+		  NewBoStats = BoStats,
+		  reach(R2#r{tf=TF, oq=OutQ2, wq=NewWQ, count=NewCount, sent=NewNumSent, recyc=NewRecycling, bo_stats=NewBoStats})
           end
        end
     end.
@@ -712,6 +718,7 @@ secondsSince(T0) ->
     {M, S, _} = now(),
     (1000000 * M + S) - T0 + 1.
 
+
 %%----------------------------------------------------------------------
 %% Purpose : Polls for incoming messages within a time window
 %%
@@ -722,95 +729,112 @@ secondsSince(T0) ->
 %%        NewStates is an accumulating list of the new received states;
 %%           QSize keeps track of the size of the working Queue
 %%----------------------------------------------------------------------
-recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, wq=WorkQ, tf=TF, t0=T0,
-      th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym, seed=Seed,
-      bo_bound=BoBound, unbo_bound=UnboBound, lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats }) ->
+recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, oq=OutQ, wq=WorkQ, tf=TF, t0=T0,
+		 th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym, seed=Seed,
+		 bo_bound=BoBound, unbo_bound=UnboBound, lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats }) ->
     R = profiling(R0),
     WQSize = count(WorkQ),
+    OQSize = count(OutQ),
     Runtime = secondsSince(T0),
     {_, RuntimeLen} = process_info(self(),message_queue_len),
     if (SelfBo andalso (RuntimeLen < UnboBound)) ->
-       log("Sending UNBACKOFF at ~w s", [Runtime]),
-       sendAllPeers(goforit,Names),
-       recvStates(R#r{selfbo=false});
-    ((not SelfBo) andalso (RuntimeLen > BoBound)) ->
-       log("Sending BACKOFF at ~w s, RuntimeLen is ~w, SelfBo is ~w", [Runtime,RuntimeLen,SelfBo]),
-       sendAllPeers(backoff,Names),
-	   {BoCount,NumDisc,NumRecyc} = BoStats,
-       recvStates(R#r{selfbo=true, bo_stats={BoCount+1,NumDisc,NumRecyc}});
-    ((WQSize == 0) and (Runtime > 30) and not LB_pending) ->
-       LBPid ! { im_feeling_idle, self() },
-       recvStates(R#r{lb_pending=true});
-    true ->
-       if (WQSize == 0) ->
-          TermDelay = spawn(?MODULE, doneNotDone, [Terminator, NumSent, NumRecd, Hcount, BoStats]),
-          Timeout = 60000;
-       true -> 
-          TermDelay = none,
-          Timeout = 0
-       end,
-       receive Msg ->
-          if WQSize == 0 -> TermDelay ! not_done;
-          true -> nop end,
-          case Msg of
-          {{State, Prev}, state} ->
-             Test = murphi_interface:brad_hash(State),
-             if Test == false -> % State not present
-                Q2 = enqueue(WorkQ,State),   
-                TF2 = diskq:enqueue(TF, {State, Prev}),
-                recvStates(R#r{recd=NumRecd+1, wq=Q2, tf=TF2, hcount=(Hcount+1)});
-             true -> 
-                recvStates(R#r{recd=NumRecd+1})
-             end;
-          {lb_nack} -> 
-             log("got lb_nack",[]),
-             recvStates(R#r{lb_pending=false});
-          {wq_length_query,_} -> 
-             log("got wq_length_query",[]),
-             LBPid !  {wq_query_response,WQSize,self()},
-             recvStates(R);
-          {send_some_of_your_wq_to,IdlePid,Ratio} -> 
-             NumberToSend0 = (Ratio * WQSize) div 100,
-             NumberToSend = if (NumberToSend0 > 10000) -> 10000; true -> NumberToSend0 end,
-             {StateList,Q2} = dequeueMany(WorkQ, NumberToSend),
-             IdlePid ! {extraStateList, StateList},
-             recvStates(R#r{sent=NumSent+NumberToSend, wq=Q2});
-             %recvStates(R#r{sent=NumSent, wq=Q2});
-          {extraStateList, StateList} -> 
-             StateListLen = length(StateList),
-             log("got ~w extra states", [StateListLen]),
-             Q2 = enqueueMany(WorkQ, StateList),
-             recvStates(R#r{recd=NumRecd+StateListLen,wq=Q2, lb_pending=(StateList == [])});
-             %recvStates(R#r{recd=NumRecd,wq=Q2, lb_pending=(StateList == [])});
-          {backoff,Pid} ->
-             log("got backoff from ~w",[Pid]),
-             ets:insert(Bov, {Pid, true}),
-             recvStates(R#r{bov=Bov});
-          {goforit,Pid} ->
-             log("got goforit from ~w",[Pid]),
-             ets:insert(Bov, {Pid, false}),
-             recvStates(R#r{bov=Bov});
-          die -> 
-             log("got die!!!",[],5), done;
-          {tc, Pid}   ->
-             log("got tc",[]),
-             Pid ! {ack, self()},
-             traceMode(Names, TF, TraceH, UseSym,Seed)
-          end
-       after Timeout ->
-          if Timeout == 60000 ->
-             log("60 secs without any states",[]),
-             TermDelay ! not_done,
-             recvStates(R);
-          true ->
-             R
-          end
-       end
-    end.
+	    log("Sending UNBACKOFF at ~w s", [Runtime]),
+	    sendAllPeers(goforit,Names),
+	    recvStates(R#r{selfbo=false});
+       ((not SelfBo) andalso (RuntimeLen > BoBound)) ->
+	    log("Sending BACKOFF at ~w s, RuntimeLen is ~w, SelfBo is ~w", [Runtime,RuntimeLen,SelfBo]),
+	    sendAllPeers(backoff,Names),
+	    {BoCount,NumDisc,NumRecyc} = BoStats,
+	    recvStates(R#r{selfbo=true, bo_stats={BoCount+1,NumDisc,NumRecyc}});
+       ((WQSize == 0) andalso OQSize == 0 andalso (Runtime > 30) andalso not LB_pending) ->
+	    LBPid ! { im_feeling_idle, self() },
+	    recvStates(R#r{lb_pending=true});
+    
+	  true ->
+	       if ((WQSize == 0)  andalso (OQSize == 0)) ->
+		       TermDelay = spawn(?MODULE, doneNotDone, [Terminator, NumSent, NumRecd, Hcount, BoStats]),
+		       Timeout = 60000;
+		  true -> 
+		       TermDelay = none,
+		       Timeout = 0
+	       end,
+	       receive Msg ->
+		       if WQSize == 0 andalso OQSize == 0 -> TermDelay ! not_done;
+			  true -> nop
+		       end,
+		       case Msg of
+			   {{State, Prev}, state} ->
+			       Test = murphi_interface:brad_hash(State),
+			       if Test == false -> % State not present
+				       Q2 = enqueue(WorkQ,State),   
+				       TF2 = diskq:enqueue(TF, {State, Prev}),
+				       recvStates(R#r{recd=NumRecd+1, wq=Q2, tf=TF2, hcount=(Hcount+1)});
+				  true -> 
+				       recvStates(R#r{recd=NumRecd+1})
+			       end;
+			   {lb_nack} -> 
+			       log("got lb_nack",[]),
+			       recvStates(R#r{lb_pending=false});
+			   {wq_length_query,_} -> 
+			       log("got wq_length_query",[]),
+			       LBPid !  {wq_query_response,WQSize,self()},
+			       recvStates(R);
+			   {send_some_of_your_wq_to,IdlePid,Ratio} ->
+			       log("got sendsome"),	    
+			       NumberToSend0 = (Ratio * WQSize) div 100,
+			       NumberToSend = if (NumberToSend0 > 10000) -> 10000; true -> NumberToSend0 end,
+			       {StateList,Q2} = dequeueMany(WorkQ, NumberToSend),
+			       IdlePid ! {extraStateList, StateList},
+			       recvStates(R#r{sent=NumSent+NumberToSend, wq=Q2});
+						%recvStates(R#r{sent=NumSent, wq=Q2});
+			   {extraStateList, StateList} ->
+			       log("got extrastate"),	    
+			       StateListLen = length(StateList),
+			       log("got ~w extra states", [StateListLen]),
+			       Q2 = enqueueMany(WorkQ, StateList),
+			       recvStates(R#r{recd=NumRecd+StateListLen,wq=Q2, lb_pending=(StateList == [])});
+						%recvStates(R#r{recd=NumRecd,wq=Q2, lb_pending=(StateList == [])});
+			   {backoff,Pid} ->
+			       log("got backoff from ~w",[Pid]),
+			       ets:insert(Bov, {Pid, true}),
+			       recvStates(R#r{bov=Bov});
+			   {goforit,Pid} ->
+			       log("got goforit from ~w",[Pid]),
+			       ets:insert(Bov, {Pid, false}),
+			       recvStates(R#r{bov=Bov});
+			   die -> 
+			       log("got die!!!",[],5), done;
+			   {tc, Pid}   ->
+			       log("got tc",[]),
+			       Pid ! {ack, self()},
+			       traceMode(Names, TF, TraceH, UseSym, Seed)
+		       end
+	       after Timeout ->
+		       if Timeout == 60000 ->
+			       log("60 secs without any states",[]),
+			       TermDelay ! not_done,
+			       recvStates(R);
+			  true ->
+			       if (OQSize > 0) ->
+				       {[{State, PrevState}], OQ2} = diskq:dequeue(OutQ),
+				       Owner = owner(State, Names, Seed),
+				       [{_, Backoff}] = ets:lookup(Bov, Owner),
+				       if Backoff ->
+					       OQ3 = diskq:enqueue(OQ2, {State, PrevState}),
+					       recvStates(R#r{oq=OQ3});
+					  true ->
+					       Owner ! {{State, PrevState}, state},
+					       recvStates(R#r{oq=OQ2})
+				       end;
+				  WQSize > 0 -> R;
+				  true -> log("wtf")
+			       end
 
+		       end
+	       end
+       end.
 
-
-profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
+profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oq=OutQ, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
     Runtime = secondsSince(T0),
     if (Runtime > (LPT + PR)) ->
        %{_, Mem} = process_info(self(),memory),
@@ -820,9 +844,10 @@ profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, rec
        log( "~w states expanded; ~w states in hash table, in ~w s (~.1f per sec) (cpu time: ~.1f; ~.1f per second ) " ++
             "with ~w states sent, ~w states received " ++
             "and ~w states in the queue (which is ~w bytes of heap space) " ++ 
+            "and ~w states in the out queue " ++ 
             "and Backoff = ~w, msgq len = ~w",
             [Count, Hcount, Runtime, Count / Runtime, CpuTime / 1000.0, 1000 * Count / CpuTime ,
-             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, SelfBo,MsgQLen ],1),
+             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, diskq:count(OutQ), SelfBo,MsgQLen ],1),
        R#r{last_profiling_time=Runtime};
     true ->
        R
@@ -836,6 +861,9 @@ log(Format, Vars, Verbosity) ->
 
 log(Format, Vars) ->
     io:format("~s.~w: " ++ Format ++ "~n", [second(inet:gethostname()), self()] ++ Vars).
+
+log(Format) ->
+    io:format("~s.~w: " ++ Format ++ "~n", [second(inet:gethostname()), self()]).
 
 dequeue(Q) -> diskq:dequeue(Q).
 
