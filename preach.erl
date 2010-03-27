@@ -1,6 +1,6 @@
 
 -module(preach).
--export([run/0,startWorker/8,ready/1, doneNotDone/5, load_balancer/3]).
+-export([run/0,startWorker/9,ready/1, doneNotDone/5, load_balancer/3]).
 
 -record(r,
    {tf, % tracefile
@@ -24,10 +24,11 @@
     unbo_bound,% UnBackOff bound; when message queue gets this small and we're in back-off mode, we send Unbackoff
     checkdeadlocks,% 
     profiling_rate, % determines how often profiling info is spat out
-    profiling_calls, % keeps track of number of calls to profiling()
+    last_profiling_time, % keeps track of number of calls to profiling()
     lb_pending,
     lb_pid,
-	bo_stats % 2-tuple {BackoffCount, NumRecycledStates} to report as statistics
+	bo_stats, % 2-tuple {BackoffCount, NumRecycledStates} to report as statistics
+	seed     % seed for owner hashing
    }).
 
 
@@ -123,17 +124,19 @@ start(P) ->
     LBPid = spawn(?MODULE, load_balancer, [Names,getintarg(lbr,0),idle]),
     lists:map(fun(X) -> X ! {lbPid, LBPid} end, tuple_to_list(Names)),
     murphi_interface:start(rundir(), model_name()),
+    Seed = getintarg(seed,0),
     log("About to compute startstates... ",[],1),
     SS = startstates(),
     case SS of 
-   {error,ErrorMsg} -> 
+    {error,ErrorMsg} -> 
        log("Murphi found an error in a startstate:~n~s",[ErrorMsg]);
-   _ -> 
+    _ -> 
        CanonicalizedStartStates = canonicalizeStates(SS,init:get_argument(nosym) == error),
-       tryToSendStates( null_state, CanonicalizedStartStates, Names, initBov(Names)),
+       log("owner of 1st startstate is ~w",[owner(hd(CanonicalizedStartStates),Names,Seed)]),
+       tryToSendStates( null_state, CanonicalizedStartStates, Names, initBov(Names),Seed),
        NumSent = length(startstates()),
        log("(Root): sent ~w startstates",[NumSent],1),
-       case detectTermination(0, NumSent, 0, 0, Names, dict:new(),{0,0,0}) of
+       case detectTermination(0, NumSent, 0, 0, Names, dict:new(),Seed,{0,0,0}) of
       {verified,NumStates,ProbNoOmission, GlobalSent,{BoCount,NumDisc,NumRecyc}} ->
           OmissionProb =  1.0 - ProbNoOmission,
           Dur = timer:now_diff(now(), T0)*1.0e-6,
@@ -179,16 +182,17 @@ initThreads(Names, NumThreads) ->
     UseSym = init:get_argument(nosym) == error,
     CheckDeadlocks = init:get_argument(ndl) == error,
     BoBound0 =  getintarg(bob,10000),
+    Seed =  getintarg(seed,0),
     BoBound = if (BoBound0 == 0) -> infinity; true -> BoBound0 end,
     UnboBound =  getintarg(unbob,if BoBound == infinity -> null; true -> (BoBound div 10) end ),
     HashSize = getintarg(m,mDefault()),
-    PR = getintarg(pr,10000),
+    PR = getintarg(pr,5),
     LB = getintarg(lbr,0),
     if Local ->
-            Args = [model_name(), UseSym,infinity, null, HashSize,CheckDeadlocks,PR,false],
+            Args = [model_name(), UseSym,infinity, null, HashSize,CheckDeadlocks,PR,false,Seed],
             ID = spawn(preach,startWorker,Args);
        true ->
-            Args = [model_name(), UseSym,BoBound,UnboBound, HashSize,CheckDeadlocks,PR,not (LB==0) ],
+            Args = [model_name(), UseSym,BoBound,UnboBound, HashSize,CheckDeadlocks,PR,not (LB==0),Seed ],
             ID = spawnAndCheck(mynode(NumThreads),preach,startWorker,Args)
     end,
     log("Starting worker thread on ~w with PID ~w", [mynode(NumThreads),ID],1),
@@ -207,7 +211,7 @@ spawnAndCheck(Node, Module, Fun, Args) ->
     end.
 
 %% Purpose : Implements Stern & Dill's termination algorithm
-detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict,{BoCount,NumDisc,NumRecyc}) ->
+detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict,Seed,{BoCount,NumDisc,NumRecyc}) ->
     log("DetectTerm: ROOT: NumDone = ~w, GlobalSent = ~w, GlobalRecd = ~w",[NumDone,GlobalSent,GlobalRecd],1),
     if NumDone == tuple_size(Names) andalso GlobalSent == GlobalRecd ->
             lists:map(fun(X) -> X ! die end, tuple_to_list(Names)),
@@ -220,15 +224,15 @@ detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict,{Bo
 					BoStats = {BoCount+ThisBoCount,NumDisc+ThisNumDisc,NumRecyc+ThisNumRecyc},
                     log("got done from ~w",[Name],1),
                     detectTermination(NumDone+1, GlobalSent+Sent, GlobalRecd+Recd, NumStates+States, 
-                                      Names, dict:store(Name,ProbNoOmission,ProbDict),BoStats);
+                                      Names, dict:store(Name,ProbNoOmission,ProbDict),Seed, BoStats);
                 {not_done, Name, Sent, Recd, States,ThisBoStats} ->
                     log("got not_done from ~w",[Name]),
 					{ThisBoCount,ThisNumDisc,ThisNumRecyc} = ThisBoStats,
 					BoStats = {BoCount-ThisBoCount,NumDisc-ThisNumDisc,NumRecyc-ThisNumRecyc},
                     detectTermination(NumDone-1, GlobalSent-Sent, GlobalRecd-Recd, NumStates-States, 
-                                      Names, dict:erase(Name,ProbDict),BoStats);
+                                      Names, dict:erase(Name,ProbDict),Seed, BoStats);
                 {error_found, State} -> 
-                    Owner = owner(State,Names),
+                    Owner = owner(State,Names,Seed),
                     log("got error_found ~w, ~w",[State,Owner]),
                     lists:map(fun(X) ->
                                       log("Sending tc to ~w",[X]),
@@ -269,13 +273,13 @@ sendStates(PrevState, [State | SRest], [Owner | ORest] ) ->
     sendStates(PrevState, SRest, ORest).
 
 %% Computes which node within Names owns State
-owner(State,Names) -> 
-    element(1+erlang:phash2(State,tuple_size(Names)), Names) .
+owner(State,Names,Seed) -> 
+    element(1+erlang:phash2({Seed,State},tuple_size(Names)), Names) .
 
 %% Purpose :  Like sendStates, but first check if the state owner "is telling"
 %%  to backoff
-tryToSendStates(PrevState, States, Names,Bov ) ->
-    Owners = lists:map(fun(S) -> owner(S,Names) end, States),
+tryToSendStates(PrevState, States, Names,Bov,Seed ) ->
+    Owners = lists:map(fun(S) -> owner(S,Names,Seed) end, States),
     GottaBo = gottaBo(Owners,Bov),
     if (GottaBo) ->
        false;
@@ -319,7 +323,7 @@ printTrace([H | [H1 | T] ]) ->
 %%           the counter-examples is done;
 %% Args    : 
 %%           Names is a list of worker's PIDs;
-traceMode(Names, TraceFile, TraceH, UseSym) ->
+traceMode(Names, TraceFile, TraceH, UseSym,Seed) ->
    log("entering traceMode",[]),
    receive 
       {find_prev, State, Trace} ->
@@ -327,7 +331,7 @@ traceMode(Names, TraceFile, TraceH, UseSym) ->
          %{Hash, {PrevOwner, PrevIndex}} = findPrev(State, TraceFile),
          case findPrev(State,TraceFile) of
          not_found -> 
-            log("Uhoh!  Not found! (~w) ~w",[owner(State,Names),State]);
+            log("Uhoh!  Not found! (~w) ~w",[owner(State,Names,Seed),State]);
          null_state ->
             T2 = [State | Trace],
             log("------------------",[]),
@@ -339,16 +343,16 @@ traceMode(Names, TraceFile, TraceH, UseSym) ->
                log("counter example construction failed!!~n",[])
             end,
             TraceH ! trace_complete, 
-            traceMode(Names, TraceFile, TraceH,UseSym);
+            traceMode(Names, TraceFile, TraceH,UseSym,Seed);
          PrevState ->
             T2 = [State | Trace],
-            PrevOwner = owner(PrevState,Names),
+            PrevOwner = owner(PrevState,Names,Seed),
             PrevOwner ! {find_prev, PrevState, T2},
-            traceMode(Names, TraceFile, TraceH, UseSym) 
+            traceMode(Names, TraceFile, TraceH, UseSym,Seed) 
          end;
       {tc, Pid}   ->  
             Pid ! {ack, self()}, % in case two nodes find simultaneous failure
-            traceMode(Names, TraceFile, TraceH, UseSym) ;
+            traceMode(Names, TraceFile, TraceH, UseSym,Seed) ;
       die -> done
     end.
 
@@ -577,7 +581,7 @@ second({_,X}) -> X.
 %% Returns : ok
 %%     
 %%----------------------------------------------------------------------
-startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profiling_rate,UseLB) ->
+startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profiling_rate,UseLB,Seed) ->
     log("startWorker() entered (model is ~s;UseSym is ~w;CheckDeadlocks is ~w,UseLB is ~w)~n", 
          [ModelName,UseSym,CheckDeadlocks,UseLB],1),
     %crypto:start(),
@@ -601,7 +605,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
         wq=WQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), 
-         profiling_calls=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0} })) 
+         last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed })) 
     of
     {'EXIT',R} -> log("EXCEPTION ~w",[R]);
     _ -> ok
@@ -636,7 +640,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
 %% Returns : done
 %%     
 %%----------------------------------------------------------------------
-reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks} ) ->
+reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks, seed=Seed} ) ->
    case recvStates(R) of
    done -> log("reach is done",[], 5), done;
    R1=#r{wq=WorkQueue, tf=TF, bov=Bov, sent=NumSent, bo_stats=BoStats} ->
@@ -655,14 +659,14 @@ reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, 
           log("Just in case cex construction fails, here it is:",[]),
           printState(State),
           TraceH ! {error_found, State},
-          traceMode(Names, TF, TraceH, UseSym);
+          traceMode(Names, TF, TraceH, UseSym,Seed);
        _ ->
           if (CheckDeadlocks andalso NewStates == []) ->
              log("Found (global) deadlock state.",[]),
              log("Just in case cex construction fails, here it is:",[]),
              printState(State),
              TraceH ! {error_found, State},
-             traceMode(Names, TF, TraceH, UseSym);
+             traceMode(Names, TF, TraceH, UseSym,Seed);
           true -> ok
           end,
           NewCanonicalizedStates = canonicalizeStates(NewStates, UseSym),
@@ -672,9 +676,9 @@ reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, 
              log("Just in case cex construction fails, here it is:",[]),
              printState(State),
              TraceH ! {error_found, State},
-             traceMode(Names, TF, TraceH, UseSym);
+             traceMode(Names, TF, TraceH, UseSym,Seed);
           true ->
-             SendSuccessful = tryToSendStates(State, NewCanonicalizedStates, Names, Bov),
+             SendSuccessful = tryToSendStates(State, NewCanonicalizedStates, Names, Bov,Seed),
              if (SendSuccessful) ->
                 NewWQ = Q2,
                 NewNumSent = NumSent + length(NewCanonicalizedStates),
@@ -719,7 +723,7 @@ secondsSince(T0) ->
 %%           QSize keeps track of the size of the working Queue
 %%----------------------------------------------------------------------
 recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, wq=WorkQ, tf=TF, t0=T0,
-      th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym,
+      th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym, seed=Seed,
       bo_bound=BoBound, unbo_bound=UnboBound, lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats }) ->
     R = profiling(R0),
     WQSize = count(WorkQ),
@@ -791,7 +795,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, wq=
           {tc, Pid}   ->
              log("got tc",[]),
              Pid ! {ack, self()},
-             traceMode(Names, TF, TraceH, UseSym)
+             traceMode(Names, TF, TraceH, UseSym,Seed)
           end
        after Timeout ->
           if Timeout == 60000 ->
@@ -806,21 +810,22 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, wq=
 
 
 
-profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, wq=WorkQ,profiling_rate=PR,profiling_calls=PC})->
-    if (PC == PR) ->
-       Runtime = secondsSince(T0),
+profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
+    Runtime = secondsSince(T0),
+    if (Runtime > (LPT + PR)) ->
        %{_, Mem} = process_info(self(),memory),
        {CpuTime,_} = statistics(runtime),
        WorkQ_heapSize =  erts_debug:flat_size(WorkQ) * 8, 
+       {_, MsgQLen} = process_info(self(),message_queue_len),
        log( "~w states expanded; ~w states in hash table, in ~w s (~.1f per sec) (cpu time: ~.1f; ~.1f per second ) " ++
             "with ~w states sent, ~w states received " ++
             "and ~w states in the queue (which is ~w bytes of heap space) " ++ 
-            "and Backoff = ~w",
+            "and Backoff = ~w, msgq len = ~w",
             [Count, Hcount, Runtime, Count / Runtime, CpuTime / 1000.0, 1000 * Count / CpuTime ,
-             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, SelfBo ],1),
-       R#r{profiling_calls=0};
+             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, SelfBo,MsgQLen ],1),
+       R#r{last_profiling_time=Runtime};
     true ->
-       R#r{profiling_calls=PC+1}
+       R
     end.
 
 log(Format, Vars, Verbosity) ->
