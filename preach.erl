@@ -815,7 +815,8 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, oq=
 			       TermDelay ! not_done,
 			       recvStates(R);
 			  true ->
-			       if (OQSize > 0) ->
+			       if WQSize > 0 -> R;
+				  (OQSize > 0) ->
 				       {[{State, PrevState}], OQ2} = diskq:dequeue(OutQ),
 				       Owner = owner(State, Names, Seed),
 				       [{_, Backoff}] = ets:lookup(Bov, Owner),
@@ -826,7 +827,6 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, oq=
 					       Owner ! {{State, PrevState}, state},
 					       recvStates(R#r{oq=OQ2})
 				       end;
-				  WQSize > 0 -> R;
 				  true -> log("wtf")
 			       end
 
