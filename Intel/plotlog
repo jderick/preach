@@ -13,6 +13,9 @@
 #  * wq_plot.eps : y-axis is size of work queue in states
 #  * ht_plot.eps : y-axis is size of hash table in states
 #  * se_plot.eps : y-axis is number of states expanded
+#  * sr_plot.eps : y-axis is number of states received
+#  * mq_plot.eps : y-axis is number of messages sitting in the
+#                  erlang runtime mail box.
 #  * bo_plot.eps : y-axis is number of nodes in back-off mode
 # 
 #  bo_plot.eps has just a single curve plotted.  For the others,
@@ -82,9 +85,13 @@ my %hash   = map { $_, 1 } @nodes;
 
 
 my %data_files;
+my %last_sec;
+my %last_sr;
 foreach my $h (@nodes) {
   my $temp = "$h.gnuplot.data";
   open($data_files{$h},">$temp")  || die "could not open $temp";
+  #$last_sec{$h} = 0;
+  #$last_sr{$h} = 0;
 }
 open(BO_DATA,">bo.data")  || die "could not open bo.data";
 my $bo_count = 0;
@@ -97,31 +104,41 @@ while (<LOG>) {
      if (/(\w+\.<\d+\.\d+.\d+>): Sending BACKOFF at (\d+) s/) {
        my $node = $1;
        $secs = $2;
-       die "wtf?" if $backoff{$node};
+       die "wtf? $node" if $backoff{$node};
        $backoff{$node} = 1;
+     #  print "Adding $node to backoff\n";
        ++$bo_count;
        print BO_DATA "$secs $bo_count\n";
-     } elsif (/(\w+\.<\d+\.\d+.\d+>): Sending UNBACKOFF at (\d+) s/) {
+     } elsif (/(\w+\.<\d+\.\d+.\d+>): Sending.* UNBACKOFF at (\d+) s/) {
        my $node = $1;
        $secs = $2;
-       die "wtf?" if !$backoff{$node};
+       die "wtf? $node" if !$backoff{$node};
        delete $backoff{$node};
+     #  print "Removing $node from backoff\n";
        --$bo_count;
        print BO_DATA "$secs $bo_count\n";
        $max_time = $max_time < $secs ? $secs : $max_time;
      }
   #} else {
-     if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states received and (\d+) states in the queue/) {
+     if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states received and (\d+) states in the queue .* msgq len = (\d+)/) {
+     #if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states received and (\d+) states in the queue/) {
        my $node = $1;
        my $estates = $2;
        my $hstates = $3;
        $secs = $4;
        my $recvd = $5;
-       my $recvd_per_sec = $5/$4;
-       my $q = $6;
-       if ($data_files{$node}) {
+       my $wq = $6;
+       my $msgq = $7;
+       #my $msgq = 0;
+       if ($data_files{$node} && $secs) {
+          # lame attempt at plotting states recvd per sec rate
+          #my $sr_delta = $recvd - $last_sr{$node};
+          #my $secs_delta = $secs - $last_secs{$node};
+          #my $recvd_per_sec = $sr_delta/$secs_delta;
+          #$last_sec{$node} = $secs;
+          #$last_sr{$node} = $recvd;
           my $FH = $data_files{$node};
-          print $FH "$secs $q $hstates $estates $recvd_per_sec\n";
+          print $FH "$secs $wq $hstates $estates $recvd $msgq\n";
        }
      }
   #}
@@ -138,8 +155,9 @@ close BO_DATA;
 plotit('lines','Work Queue States',2,'wq');
 plotit('lines','Hash Table States',3,'ht');
 plotit('lines','Expanded States',4,'es');
-plotit('lines','States Recvd per Second',5,'sr');
+plotit('lines','MsgQ Length',6,'mq');
 plotit('histeps','Backoff Mode Nodes',2,'bo');
+plotit('lines','States Recvd',5,'sr');
 
 print "the following nodes are currently in backoff mode:\n[";
 foreach my $n (keys %backoff) {

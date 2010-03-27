@@ -156,7 +156,8 @@ Preach Command Line Arguments...................................................
 -m N3       make the murphi hash table at each node use N3 Megabytes.
             If not given, this defaults to 1024 (1 GB).
 
--pr N4      print profiling information every N4 states.  default is 10000
+-pr N4      each worker node prints profiling information every N4 seconds.  
+            default is 5.
 
 -lbr N5     Using load balancing, which means whenever a worker node's
             work queue is empty, it is sent N5 percent of the states from
@@ -164,12 +165,16 @@ Preach Command Line Arguments...................................................
             N5=0, which turns off the load balancing mechanism.  
             Typically we use 50 for this parameter.
 
+-seed S     By changing S, once can change the uniform state ownership
+            function to a different (but still presumably random
+            and uniform) function.  
+
 
 Utilities.................................................................
 
 There is a perl script Intel/plotlog that uses gnuplot to create plots
-of work queue lengths, hash table state counts, or expanded state counts,
-using info from Preach log files.  See the comment at the top of the 
+of work queue lengths, hash table state counts, expanded state counts,
+etc., using info from Preach log files.  See the comment at the top of the 
 script for usage.
 
 
