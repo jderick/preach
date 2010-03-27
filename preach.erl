@@ -6,6 +6,7 @@
    {tf, % tracefile
     wq, % work queue
     oq, % out queue
+    req, % recycle queue
     ss, % state set
     hcount, % # states in hash file
     count, % # states expanded
@@ -468,7 +469,12 @@ initWorkQueue() ->
 
 initOutQueue() ->
     diskq:open(tmp_disk_path() ++ "/outQueue." ++ atom_to_list(node()),
-          getintarg(wqsize, 50000000000), getintarg(wqcache, 11000)).
+          getintarg(wqsize, 50000000000), getintarg(wqcache, 10000)).
+
+initRecycleQueue() ->
+    diskq:open(tmp_disk_path() ++ "/reQueue." ++ atom_to_list(node()),
+          getintarg(wqsize, 50000000000), getintarg(wqcache, 10000)).
+
 
 enqueue(Q, X) -> diskq:enqueue(Q, X).
 
@@ -608,6 +614,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     murphi_interface:init_hash(HashSize),
     WQ = initWorkQueue(),
     OQ = initOutQueue(),
+    ReQ = initRecycleQueue(),
     TF = initTraceFile(),
     %% IF YOU WANT BLOOM...
     %%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
@@ -616,7 +623,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     %% ENDIF
         names=Names, term=Terminator, th=TraceH,
         sent=0, recd=0, count=0, hcount=0,bov=initBov(Names), selfbo=false, 
-        wq=WQ, oq=OQ, tf=TF, 
+        wq=WQ, req=ReQ, oq=OQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), 
          last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed })) 
@@ -729,13 +736,15 @@ secondsSince(T0) ->
 %%        NewStates is an accumulating list of the new received states;
 %%           QSize keeps track of the size of the working Queue
 %%----------------------------------------------------------------------
-recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, oq=OutQ, wq=WorkQ, tf=TF, t0=T0,
+recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req=ReQ, oq=OutQ, wq=WorkQ, tf=TF, t0=T0,
 		 th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym, seed=Seed,
 		 bo_bound=BoBound, unbo_bound=UnboBound, lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats }) ->
     R = profiling(R0),
     WQSize = count(WorkQ),
     OQSize = count(OutQ),
+    RESize = count(ReQ),
     Runtime = secondsSince(T0),
+    Finished = WQSize == 0 andalso OQSize == 0 andalso RESize == 0,
     {_, RuntimeLen} = process_info(self(),message_queue_len),
     if (SelfBo andalso (RuntimeLen < UnboBound)) ->
 	    log("Sending UNBACKOFF at ~w s", [Runtime]),
@@ -746,12 +755,12 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, oq=
 	    sendAllPeers(backoff,Names),
 	    {BoCount,NumDisc,NumRecyc} = BoStats,
 	    recvStates(R#r{selfbo=true, bo_stats={BoCount+1,NumDisc,NumRecyc}});
-       ((WQSize == 0) andalso OQSize == 0 andalso (Runtime > 30) andalso not LB_pending) ->
+       (WQSize == 0 andalso (Runtime > 30) andalso not LB_pending) ->
 	    LBPid ! { im_feeling_idle, self() },
 	    recvStates(R#r{lb_pending=true});
     
 	  true ->
-	       if ((WQSize == 0)  andalso (OQSize == 0)) ->
+	       if Finished ->
 		       TermDelay = spawn(?MODULE, doneNotDone, [Terminator, NumSent, NumRecd, Hcount, BoStats]),
 		       Timeout = 60000;
 		  true -> 
@@ -759,7 +768,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, oq=
 		       Timeout = 0
 	       end,
 	       receive Msg ->
-		       if WQSize == 0 andalso OQSize == 0 -> TermDelay ! not_done;
+		       if Finished -> TermDelay ! not_done;
 			  true -> nop
 		       end,
 		       case Msg of
@@ -815,17 +824,28 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, oq=
 			       TermDelay ! not_done,
 			       recvStates(R);
 			  true ->
-			       if WQSize > 0 -> R;
-				  (OQSize > 0) ->
+			       if (OQSize > 0) ->
 				       {[{State, PrevState}], OQ2} = diskq:dequeue(OutQ),
 				       Owner = owner(State, Names, Seed),
 				       [{_, Backoff}] = ets:lookup(Bov, Owner),
 				       if Backoff ->
-					       OQ3 = diskq:enqueue(OQ2, {State, PrevState}),
-					       recvStates(R#r{oq=OQ3});
+					       ReQ2 = diskq:enqueue(ReQ, {State, PrevState}),
+					       recvStates(R#r{oq=OQ2, req=ReQ2});
 					  true ->
 					       Owner ! {{State, PrevState}, state},
 					       recvStates(R#r{oq=OQ2})
+				       end;
+				  WQSize > 0 -> R;
+				  RESize > 0 ->
+				       {[{State, PrevState}], Re2} = diskq:dequeue(ReQ),
+				       Owner = owner(State, Names, Seed),
+				       [{_, Backoff}] = ets:lookup(Bov, Owner),
+				       if Backoff ->
+					       Re3 = diskq:enqueue(Re2, {State, PrevState}),
+					       recvStates(R#r{req=Re3});
+					  true ->
+					       Owner ! {{State, PrevState}, state},
+					       recvStates(R#r{req=Re2})
 				       end;
 				  true -> log("wtf")
 			       end
@@ -834,7 +854,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, oq=
 	       end
        end.
 
-profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oq=OutQ, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
+profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oq=OutQ, req=ReQ, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
     Runtime = secondsSince(T0),
     if (Runtime > (LPT + PR)) ->
        %{_, Mem} = process_info(self(),memory),
@@ -845,9 +865,10 @@ profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, rec
             "with ~w states sent, ~w states received " ++
             "and ~w states in the queue (which is ~w bytes of heap space) " ++ 
             "and ~w states in the out queue " ++ 
+            "and ~w states in the recycle queue " ++ 
             "and Backoff = ~w, msgq len = ~w",
             [Count, Hcount, Runtime, Count / Runtime, CpuTime / 1000.0, 1000 * Count / CpuTime ,
-             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, diskq:count(OutQ), SelfBo,MsgQLen ],1),
+             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, diskq:count(OutQ), diskq:count(ReQ), SelfBo,MsgQLen ],1),
        R#r{last_profiling_time=Runtime};
     true ->
        R
