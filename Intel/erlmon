@@ -7,9 +7,9 @@ export PREACH_NODE_NAME=$2
 export LOGDIR=$3
 export EPMD=$4
 export PREACH_TEMP=$5
-export ERLANG_ROOT=$6
+export ERLANG_PREFIX=$6
 
-: ${LOGDIR:?} ${EPMD:?} ${PREACH_MACHINE:?} ${PREACH_NODE_NAME:?} ${PREACH_TEMP:?} ${ERLANG_ROOT:?}
+: ${LOGDIR:?} ${EPMD:?} ${PREACH_MACHINE:?} ${PREACH_NODE_NAME:?} ${PREACH_TEMP:?} ${ERLANG_PREFIX:?}
 
 cleanup()
 {
@@ -31,7 +31,7 @@ scp "${PREACH_MACHINE}:${LOGDIR}/diskmon" $WORKDIR
 cd $WORKDIR
 export ERL_EPMD_PORT=$EPMD
 export ERL_FULLSWEEP_AFTER=0
-nohup ${ERLANG_ROOT}/bin/erl -pa $WORKDIR +A 10 -sname ${PREACH_NODE_NAME} -detached
+nohup ${ERLANG_PREFIX}/bin/erl -pa $WORKDIR +A 10 -sname ${PREACH_NODE_NAME} -detached
 
 nohup $WORKDIR/diskmon >& $LOGDIR/`hostname`.usage 
 

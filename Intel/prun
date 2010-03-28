@@ -57,6 +57,18 @@ if (!defined($ENV{'ERL_EPMD_PORT'})) {
      $ENV{'ERL_EPMD_PORT'} = 4369;
 }
 
+
+if (!defined($ENV{'PREACH_TEMP'})) {
+     print "prun: PREACH_TEMP not defined.\n";
+     exit(1);
+}
+
+
+if (!defined($ENV{'ERLANG_PREFIX'})) {
+     print "prun: ERLANG_PREFIX not defined.\n";
+     exit(1);
+}
+
 $ENV{'ERL_FULLSWEEP_AFTER'} = 0;
 
 $ORIGDIR = `pwd`;
@@ -74,7 +86,7 @@ system "cat hosts >> ../allhosts";
 
 system "rm -f *.usage *.iostat";
 
-system "$WORKDIR/erlsetup $ORIGDIR $ENV{'ERL_EPMD_PORT'} $ENV{PREACH_TEMP} $ENV{ERLANG_ROOT}";
+system "$WORKDIR/erlsetup $ORIGDIR $ENV{'ERL_EPMD_PORT'} $ENV{PREACH_TEMP} $ENV{ERLANG_PREFIX}";
 system "cat bad_servers.txt >> ../allbad";
 system "mv bad_servers.txt bad.bak";
 
