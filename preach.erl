@@ -47,7 +47,7 @@ makeLink([Host | Rest], Args) ->
     S = re:split(atom_to_list(Host), "[@]", [{return, list}]),
     Machine = list_to_atom(lists:nth(1,tl(S))),
     Name = list_to_atom(hd(S)),
-    case slave:start_link(Machine, Name, Args) of
+    case slave:start(Machine, Name, Args) of
     {ok, Node} ->
        log("Erlang node started = [~p]", [Node]),
        makeLink(Rest, Args);
@@ -112,7 +112,7 @@ start(P) ->
        ok;
        true ->
        Args = "-pa " ++ os:getenv("PREACH_ROOT") ++ " -rundir " ++ os:getenv("PWD") ++ " -model " ++ model_name() ++ " -verbose " ++ integer_to_list(getintarg(verbose,verboseDefault())),
-       makeLink(hosts(), Args),
+       pmap(fun(X) -> makeLink(X, Args) end, split_list(10, hosts())),
        %% invalidate nfs cache to ensure latest beam files are loaded
        Rand = integer_to_list(random:uniform(1000000000)),
        lists:map(
@@ -197,7 +197,8 @@ initThreads(Names, NumThreads) ->
             ID = spawn(preach,startWorker,Args);
        true ->
             Args = [model_name(), UseSym,BoBound,UnboBound, HashSize,CheckDeadlocks,PR,not (LB==0),Seed ],
-            ID = spawnAndCheck(mynode(NumThreads),preach,startWorker,Args)
+            ID = spawnAndCheck(mynode(NumThreads),preach,startWorker,Args),
+            link(ID)
     end,
     log("Starting worker thread on ~w with PID ~w", [mynode(NumThreads),ID],1),
     FullNames = initThreads([ID | Names], NumThreads-1),
@@ -802,7 +803,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			       recvStates(R#r{recd=NumRecd+StateListLen,wq=Q2, lb_pending=(StateList == [])});
 						%recvStates(R#r{recd=NumRecd,wq=Q2, lb_pending=(StateList == [])});
 			   {ack,Pid} ->
-			       %log("got goforit from ~w",[Pid]),
+
 			       ets:update_counter(Bov, Pid, -1),
 			       recvStates(R#r{bov=Bov});
 			   die -> 
@@ -818,28 +819,27 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			       TermDelay ! not_done,
 			       recvStates(R);
 			  true ->
-			       if (OQSize > 0) ->
-                                       DestPid = element(CurOQ+1, Names),
-				       [{_, Backoff}] = ets:lookup(Bov, DestPid),
-				       if Backoff > 1000 ->
-					       recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names)});
-					  true ->
-                                               case diskq:dequeue(array:get(CurOQ, OutQ)) of
-                                                   {[], _} ->
-                                                       recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names)});
-                                                   {[{State, PrevState}], COQ2} ->
-                                                       DestPid ! {State, PrevState, self(), state},
-                                                       ets:update_counter(Bov, DestPid, 1),
-                                                       recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names),
-                                                                      oq=array:set(CurOQ, COQ2, OutQ),
-                                                                      oqs=OQSize-1})
-                                               end
-                                       end;
-				  WQSize > 0 -> R;
-				  true -> log("wtf")
-			       end
-
-		       end
+				  if WQSize > 0 -> R;
+                                     (OQSize > 0) ->
+                                          DestPid = element(CurOQ+1, Names),
+                                          [{_, Backoff}] = ets:lookup(Bov, DestPid),
+                                          if Backoff > 1000 ->
+                                                  recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names)});
+                                             true ->
+                                                  case diskq:dequeue(array:get(CurOQ, OutQ)) of
+                                                      {[], _} ->
+                                                          recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names)});
+                                                      {[{State, PrevState}], COQ2} ->
+                                                          DestPid ! {State, PrevState, self(), state},
+                                                          ets:update_counter(Bov, DestPid, 1),
+                                                          recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names),
+                                                                         oq=array:set(CurOQ, COQ2, OutQ),
+                                                                         oqs=OQSize-1})
+                                                  end
+                                          end;
+                                     true -> log("wtf")
+                                  end
+                       end
 	       end
        end.
 
@@ -895,3 +895,21 @@ verboseDefault() -> 1.
 mDefault() -> 1024.
 
 
+split_list(N, L) ->
+    Piece = length(L) div N,
+    if Piece < 1 -> get_pieces(1, L);
+       true -> get_pieces(Piece, L)
+    end.
+    
+
+get_pieces(N, L) ->
+    if length(L) > N ->
+            [lists:sublist(L, N) | get_pieces(N, lists:sublist(L, N+1, length(L)))];
+       true -> [L]
+    end.
+
+pmap(F, L) ->
+    Parent = self(),
+    [receive {Pid, Result} -> Result end
+     || Pid <- [spawn(fun() -> Parent ! {self(), F(X)} end)
+                || X <- L]].
