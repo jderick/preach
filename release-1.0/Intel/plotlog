@@ -1,0 +1,204 @@
+#!/usr/intel/bin/perl
+#
+# A utility for plotting information from a preach log file.
+# It can be used during preach running (i.e. while the log
+# file is still in flux) or after preach completion.
+# 
+# usage:
+# plot mymodel.log <args>
+#
+# this will create four eps files, each being a plot
+# with x-axis being time (seconds) and y-axis as follows:
+#
+#  * wq_plot.eps : y-axis is size of work queue in states
+#  * ht_plot.eps : y-axis is size of hash table in states
+#  * se_plot.eps : y-axis is number of states expanded
+#  * sr_plot.eps : y-axis is number of states received
+#  * mq_plot.eps : y-axis is number of messages sitting in the
+#                  erlang runtime mail box.
+#  * bo_plot.eps : y-axis is number of nodes in back-off mode
+# 
+#  bo_plot.eps has just a single curve plotted.  For the others,
+#  <args> controls which nodes are plotted:
+#  
+#  * if <args> = all, then all nodes are plotted
+#    (this is the most common we use it)
+#  * if <args> is empty, then a single node is picked at random
+#  * if <args> is a non-empty list of nodes, those nodes are
+#    plotted
+#
+# This script assumes gnuplot and gv are in your $path.
+#
+
+my $log = shift;
+#my $tag = shift;
+mkdir 'plotlog.data';
+chdir 'plotlog.data';
+#($tag =~ /^(wq|ht|es|bo)$/) || die "tag arg must be one of wq, ht, es, or bo";
+
+$log = "../$log";
+open(LOG,"$log")  || die "could not open $log";
+my @all_nodes;
+my $random_node;
+
+my $root;
+if (1) {
+  while (<LOG>) {
+    if (/Starting worker thread on \w+\@(\w+) with PID (.*)/) {
+      my $node = "$1.$2";
+      chomp $node;
+      @all_nodes = (@all_nodes,$node);
+    }
+  }
+} else {
+  while (<LOG>) {
+    if (/Executed on\s+:\s+(\w+)/) {
+      $root = $1;
+      last;
+    }
+  }
+  while (<LOG>) {
+    if (/NB_PARALLEL_JOB_HOSTS=(.+)/) {
+      @all_nodes = ($root,split(/ /,$1));
+      last;
+    }
+  }
+}
+
+#print join("\n",@all_nodes); exit;
+my @nodes;
+if (! @ARGV) {
+  my $i = int(rand()*(@all_nodes));
+  @nodes = ($all_nodes[$i]);
+  print @nodes;  print "\n";
+} elsif ($ARGV[0] eq "all") {
+  @nodes = @all_nodes;
+} else {
+  @nodes = @ARGV;
+}
+
+#
+# remove duplicates from @nodes
+#
+my %hash   = map { $_, 1 } @nodes;	
+@nodes = keys %hash;
+
+
+my %data_files;
+my %last_sec;
+my %last_sr;
+foreach my $h (@nodes) {
+  my $temp = "$h.gnuplot.data";
+  open($data_files{$h},">$temp")  || die "could not open $temp";
+  #$last_sec{$h} = 0;
+  #$last_sr{$h} = 0;
+}
+open(BO_DATA,">bo.data")  || die "could not open bo.data";
+my $bo_count = 0;
+my $max_time = 0;
+
+close(LOG);
+open(LOG,$log)  || die "could not open $log";
+while (<LOG>) {
+  #if ($tag eq 'bo') {
+     if (/(\w+\.<\d+\.\d+.\d+>): Sending BACKOFF at (\d+) s/) {
+       my $node = $1;
+       $secs = $2;
+       die "wtf? $node" if $backoff{$node};
+       $backoff{$node} = 1;
+     #  print "Adding $node to backoff\n";
+       ++$bo_count;
+       print BO_DATA "$secs $bo_count\n";
+     } elsif (/(\w+\.<\d+\.\d+.\d+>): Sending.* UNBACKOFF at (\d+) s/) {
+       my $node = $1;
+       $secs = $2;
+       die "wtf? $node" if !$backoff{$node};
+       delete $backoff{$node};
+     #  print "Removing $node from backoff\n";
+       --$bo_count;
+       print BO_DATA "$secs $bo_count\n";
+       $max_time = $max_time < $secs ? $secs : $max_time;
+     }
+  #} else {
+     if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states received and (\d+) states in the queue .* msgq len = (\d+)/) {
+     #if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states received and (\d+) states in the queue/) {
+       my $node = $1;
+       my $estates = $2;
+       my $hstates = $3;
+       $secs = $4;
+       my $recvd = $5;
+       my $wq = $6;
+       my $msgq = $7;
+       #my $msgq = 0;
+       if ($data_files{$node} && $secs) {
+          # lame attempt at plotting states recvd per sec rate
+          #my $sr_delta = $recvd - $last_sr{$node};
+          #my $secs_delta = $secs - $last_secs{$node};
+          #my $recvd_per_sec = $sr_delta/$secs_delta;
+          #$last_sec{$node} = $secs;
+          #$last_sr{$node} = $recvd;
+          my $FH = $data_files{$node};
+          print $FH "$secs $wq $hstates $estates $recvd $msgq\n";
+       }
+     }
+  #}
+   $max_time = $max_time < $secs ? $secs : $max_time;
+}
+
+close LOG;
+foreach my $h (@nodes) {
+  close($data_files{$h});
+}
+print BO_DATA "$max_time $bo_count\n";
+close BO_DATA;
+
+plotit('lines','Work Queue States',2,'wq');
+plotit('lines','Hash Table States',3,'ht');
+plotit('lines','Expanded States',4,'es');
+plotit('lines','MsgQ Length',6,'mq');
+plotit('histeps','Backoff Mode Nodes',2,'bo');
+plotit('lines','States Recvd',5,'sr');
+
+print "the following nodes are currently in backoff mode:\n[";
+foreach my $n (keys %backoff) {
+   print "$n ";
+}
+print "]\n";
+
+#system "gv wq_plot.eps &";
+#system "gv se_plot.eps &";
+#system "gv ht_plot.eps &";
+#system "gv bo_plot.eps &";
+
+sub plotit($$$$) {
+   my ($style,$ylabel,$col,$tag) = @_;
+   my $gtemp = "temp";
+   open(GTEMP,">$gtemp")  || die "could not open $gtemp";
+   print GTEMP "
+   set nokey
+   set terminal postscript color
+   set data style $style
+   set ylabel \"$ylabel\"
+   set xlabel \"Seconds\"
+   plot \\
+   "; 
+   if ($tag eq 'bo') {
+        print GTEMP "  \"bo.data\" using 1:$col with $style";
+   } else {
+      for (my $i=0;$i<@nodes;$i++) {
+        my $temp = $nodes[$i].".gnuplot.data";
+          print GTEMP "   \"$temp\" using 1:$col";
+          print GTEMP ", \\" if $i < @nodes-1;
+          print GTEMP "\n";
+        }
+  }
+  close GTEMP;
+  system "gnuplot $gtemp > ../${tag}_plot.eps";
+}
+
+
+#unlink $temp;
+#unlink $gtemp;
+
+
+

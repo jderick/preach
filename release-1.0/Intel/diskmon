@@ -1,0 +1,8 @@
+#!/bin/csh
+
+while (1)
+  uptime
+  top -bn1 | grep beam
+  df /netbatch
+  sleep 10
+end
