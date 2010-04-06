@@ -180,6 +180,10 @@ of work queue lengths, hash table state counts, expanded state counts,
 etc., using info from Preach log files.  See the comment at the top of the 
 script for usage.
 
+PReach prints full states in error traces.  This can be annoying.  For those
+that prefer "diff" traces, there is a script Intel/diff_trace_annotate.pl
+that does this.  See comment in the script for usage.
+
 
 Contacts.................................................................
 
