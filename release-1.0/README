@@ -165,6 +165,9 @@ Preach Command Line Arguments...................................................
             N5=0, which turns off the load balancing mechanism.  
             Typically we use 50 for this parameter.
 
+-verbose N6 Controls verbosity level. Greater value gives more output. 
+                        Range is {0,...,5}; default value is 1.
+
 -seed S     By changing S, once can change the uniform state ownership
             function to a different (but still presumably random
             and uniform) function.  
