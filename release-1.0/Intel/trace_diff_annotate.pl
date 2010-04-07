@@ -7,8 +7,11 @@
 #
 #  trace_diff_annotate.pl < my_model.log > my_model.error
 #
+#  Also, adding the flag -d will make it *only* print the diffs,
+#  just like Murphi's -td flag.
 #
 
+my $diff_only = (shift eq '-d');
 my ($pre_trace,$start_state,$white_space,$next_state) = (1,2,3,4);
 my $fsm = $pre_trace;
 my @state_vars;
@@ -16,6 +19,11 @@ my %old_state;
 my %new_state;
 while (<>) {
   if ($fsm == $pre_trace) {
+    if (/Found \(global\) deadlock/) { print; }
+    if (/Found Invariant Failure/) { print; }
+    if (/Murphi Engine threw an error/) { 
+      print; <>; print;  # error msg shows up on following line
+    }
     if (/^Here's the first state/) {
       print;
       $fsm = $start_state;
@@ -46,10 +54,16 @@ while (<>) {
 sub print_new_state() 
 {
   foreach my $var (@state_vars) {
-    if ($old_state{$var} ne $new_state{$var}) {
-      print "DIFF> ";
+    if ($diff_only) {
+      if ($old_state{$var} ne $new_state{$var}) {
+        print "$var:$new_state{$var}\n";
+      }
+    } else {
+      if ($old_state{$var} ne $new_state{$var}) {
+        print "DIFF> ";
+      }
+      print "$var:$new_state{$var}\n";
     }
-    print "$var:$new_state{$var}\n";
     $old_state{$var} = $new_state{$var};
   }
 }
