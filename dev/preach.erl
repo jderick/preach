@@ -566,9 +566,14 @@ mynode(Index) ->
 ready(File) -> os:cmd("touch " ++ File).
 
 initBov(Names) ->
-    Bov = ets:new(bov, []),
-    lists:map(fun(Pid) -> ets:insert(Bov, {Pid,0}) end, tuple_to_list(Names)),
-    Bov.
+    case ets:info(bov) of
+        undefined ->
+            Bov = ets:new(bov, [set, named_table, public]),
+            lists:map(fun(Pid) -> ets:insert(Bov, {Pid,0}) end, tuple_to_list(Names)),
+            Bov;
+        _ -> bov
+    end.
+
 
 startstates() ->
     murphi_interface:startstates().
