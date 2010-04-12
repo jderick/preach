@@ -7,6 +7,7 @@
     wq, % work queue
     oq, % out queue
     coq, % current output queue
+    minbo, % minimum backoff count
     oqs, % out queue size
     req, % recycle queue
     ss, % state set
@@ -615,6 +616,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     %MyID = indexOf(self(), tuple_to_list(Names)),
     log("running model in ~s~n", [rundir()],1),
     murphi_interface:start(rundir(), ModelName),
+    timer:sleep(1000),
     murphi_interface:init_hash(HashSize),
     WQ = initWorkQueue(),
     OQ = array:from_list(initOutQueues(tuple_size(Names))),
@@ -626,7 +628,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     case (catch reach(#r{ss=null,
     %% ENDIF
         names=Names, term=Terminator, th=TraceH,
-        sent=0, recd=0, count=0, oqs=0, coq=0, hcount=0,bov=initBov(Names), selfbo=false, 
+        sent=0, recd=0, count=0, oqs=0, coq=0, minbo=0, hcount=0,bov=initBov(Names), selfbo=false, 
         wq=WQ, req=ReQ, oq=OQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), 
@@ -744,12 +746,12 @@ secondsSince(T0) ->
 recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req=ReQ, oq=OutQ, wq=WorkQ, tf=TF, t0=T0,
 		 th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym, seed=Seed,
 		 bo_bound=BoBound, unbo_bound=UnboBound, lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats,
-                oqs=OQSize, coq=CurOQ}) ->
+                oqs=OQSize, coq=CurOQ, minbo=MinBO}) ->
     R = profiling(R0),
     WQSize = count(WorkQ),
     Runtime = secondsSince(T0),
     Finished = WQSize == 0 andalso OQSize == 0,
-    {_, RuntimeLen} = process_info(self(),message_queue_len),
+%    {_, RuntimeLen} = process_info(self(),message_queue_len),
     if (WQSize == 0 andalso (Runtime > 30) andalso not LB_pending) ->
 	    LBPid ! { im_feeling_idle, self() },
 	    recvStates(R#r{lb_pending=true});
@@ -767,7 +769,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			   {State, Prev, Pid, state} ->
                                case Pid of
                                    none -> nop;
-                                   Src -> Src ! {ack, self()}
+                                   Src -> Src ! {ack, self(), WQSize}
                                end,
 			       Test = murphi_interface:brad_hash(State),
 			       if Test == false -> % State not present
@@ -802,10 +804,10 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			       Q2 = enqueueMany(WorkQ, StateList),
 			       recvStates(R#r{recd=NumRecd+StateListLen,wq=Q2, lb_pending=(StateList == [])});
 						%recvStates(R#r{recd=NumRecd,wq=Q2, lb_pending=(StateList == [])});
-			   {ack,Pid} ->
+			   {ack,Pid, OtherWQSize} ->
 
 			       ets:update_counter(Bov, Pid, -1),
-			       recvStates(R#r{bov=Bov});
+			       recvStates(R#r{bov=Bov, minbo=min(OtherWQSize, MinBO)});
 			   die -> 
 			       log("got die!!!",[],5), done;
 			   {tc, Pid}   ->
@@ -819,7 +821,25 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			       TermDelay ! not_done,
 			       recvStates(R);
 			  true ->
-				  if WQSize > 0 -> R;
+				  if (MinBO < 10000 andalso OQSize > 0) ->
+                                          DestPid = element(CurOQ+1, Names),
+                                          [{_, Backoff}] = ets:lookup(Bov, DestPid),
+                                          if Backoff > 1000 ->
+                                                  recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names)});
+                                             true ->
+                                                  case diskq:dequeue(array:get(CurOQ, OutQ)) of
+                                                      {[], _} ->
+                                                          recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names)});
+                                                      {[{State, PrevState}], COQ2} ->
+                                                          DestPid ! {State, PrevState, self(), state},
+                                                          NewBO = ets:update_counter(Bov, DestPid, 1),
+                                                          recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names),
+                                                                         oq=array:set(CurOQ, COQ2, OutQ),
+                                                                         oqs=OQSize-1,
+                                                                         minbo=MinBO + 1})
+                                                  end
+                                          end;
+                                     WQSize > 0 -> R;
                                      (OQSize > 0) ->
                                           DestPid = element(CurOQ+1, Names),
                                           [{_, Backoff}] = ets:lookup(Bov, DestPid),
@@ -831,10 +851,11 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                                                           recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names)});
                                                       {[{State, PrevState}], COQ2} ->
                                                           DestPid ! {State, PrevState, self(), state},
-                                                          ets:update_counter(Bov, DestPid, 1),
+                                                          NewBO = ets:update_counter(Bov, DestPid, 1),
                                                           recvStates(R#r{coq=(CurOQ + 1) rem tuple_size(Names),
                                                                          oq=array:set(CurOQ, COQ2, OutQ),
-                                                                         oqs=OQSize-1})
+                                                                         oqs=OQSize-1,
+                                                                         minbo=min(NewBO, MinBO)})
                                                   end
                                           end;
                                      true -> log("wtf")
@@ -843,7 +864,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 	       end
        end.
 
-profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oqs=OQSize, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
+profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oqs=OQSize, minbo=MinBO, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
     Runtime = secondsSince(T0),
     if (Runtime > (LPT + PR)) ->
        %{_, Mem} = process_info(self(),memory),
@@ -854,9 +875,9 @@ profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, rec
             "with ~w states sent, ~w states received " ++
             "and ~w states in the queue (which is ~w bytes of heap space) " ++ 
             "and ~w states in the out queue " ++ 
-            "and Backoff = ~w, msgq len = ~w",
+            "and Backoff = ~w, msgq len = ~w, minbo = ~w", 
             [Count, Hcount, Runtime, Count / Runtime, CpuTime / 1000.0, 1000 * Count / CpuTime ,
-             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, OQSize, SelfBo,MsgQLen ],1),
+             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, OQSize, SelfBo,MsgQLen, MinBO ],1),
        R#r{last_profiling_time=Runtime};
     true ->
        R
@@ -913,3 +934,9 @@ pmap(F, L) ->
     [receive {Pid, Result} -> Result end
      || Pid <- [spawn(fun() -> Parent ! {self(), F(X)} end)
                 || X <- L]].
+min(X, Y) ->
+    if X > Y ->
+            Y;
+    true ->
+            X
+    end.
