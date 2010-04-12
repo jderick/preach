@@ -286,7 +286,7 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
       int count = Rules->whatRuleFired((buff+1), d->state_buffer);
       driver_output(d->port, d->state_buffer, count);      
     } else if (fn == 16) {
-      unsigned int hash_MB = *((unsigned int*)(buff+1));
+      unsigned long hash_MB = *((unsigned int*)(buff+1));
       //printf("murphi engine got hash_MB = %d \n",hash_MB);
       unsigned long hash_Bytes = 1024*1024*hash_MB;
       unsigned long hsize0 = hash_Bytes * 8 / state_set::bits_per_state();
