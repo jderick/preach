@@ -795,11 +795,9 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			       log("got sendsome"),	    
 			       NumberToSend = (Ratio * WQSize) div 100,
                    % go into back off mode to avoid mailbox blow up while building extraStateList msg
-                               if ((not SelfBo) andalso (NumberToSend > 1000)) -> sendAllPeers(backoff,Names); true -> ok end,
-                                                %NumberToSend = if (NumberToSend0 > 10000) -> 10000; true -> NumberToSend0 end,
+                               %NumberToSend = if (NumberToSend0 > 10000) -> 10000; true -> NumberToSend0 end,
 			       {StateList,Q2} = dequeueMany(WorkQ, NumberToSend),
 			       IdlePid ! {extraStateList, StateList},
-                               if ((not SelfBo) andalso (NumberToSend > 1000)) -> sendAllPeers(goforit,Names); true -> ok end,
 			       recvStates(R#r{sent=NumSent+NumberToSend, wq=Q2});
 						%recvStates(R#r{sent=NumSent, wq=Q2});
 			   {extraStateList, StateList} ->
