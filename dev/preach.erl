@@ -782,7 +782,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			   {State, Prev, Pid, state} ->
                                case Pid of
                                    none -> nop;
-                                   Src -> Src ! {ack, self(), 1, WQSize}
+                                   Src -> Src ! {ack, self(), WQSize}
                                end,
 			       Test = murphi_interface:brad_hash(State),
 			       if Test == false -> % State not present
@@ -818,7 +818,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                            {Count, StateList, Pid, stateList} ->
                                case Pid of
                                    none -> nop;
-                                   _ -> Pid ! {ack, self(), Count, WQSize}
+                                   _ -> Pid ! {ack, self(), WQSize}
                                end,
                                NewStatePairs = lists:filter(
                                                  fun({X,Y}) -> murphi_interface:brad_hash(X) == false end,
@@ -830,12 +830,12 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                            {Count, StateList, Pid, extraStateList} ->
                                case Pid of
                                    none -> nop;
-                                   _ -> Pid ! {ack, self(), Count, WQSize}
+                                   _ -> Pid ! {ack, self(), WQSize}
                                end,
                                Q2 = enqueueMany(WorkQ, StateList),
                                recvStates(R#r{recd=NumRecd+Count, wq=Q2});
-			   {ack, Pid, AckSize, OtherWQSize} ->
-			       ets:update_counter(Bov, Pid, -AckSize),
+			   {ack, Pid, OtherWQSize} ->
+			       ets:update_counter(Bov, Pid, -1),
 			       ets:insert(owq, {Pid, OtherWQSize}),
 			       recvStates(R#r{bov=Bov, minwq=min(OtherWQSize, MinWQ)});
 			   die -> 
@@ -860,9 +860,6 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                                      (OQSize > 10000 * tuple_size(Names)) ->
                                           R2 = sendOutQ(R),
                                           recvStates(R2);
-%                                     (MinWQ + 20000 < WQSize) ->
-%                                          R2 = sendOutQ(R),
-%                                          recvStates(R2);
                                      WQSize > 0 -> R;
                                      (OQSize > 0) ->
                                           R2 = sendOutQ(R),
@@ -873,38 +870,41 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 	       end
        end.
 
-% minwq(WQSize) -> list:fold_left(fun (X,A) -> min(X,A) end, WQSize, ets:match(owq, {'_', '$1'})).
-    
+
 sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ, minwq=MinWQ, wq=WQ}) ->
     DestPid = element(CurOQ+1, Names),
     WQSize = count(WQ),
     [{_, Backoff}] = ets:lookup(Bov, DestPid),
     [{_, OWQSize}] = ets:lookup(owq, DestPid),
-    if Backoff > 10000 div tuple_size(Names) ->
+    if Backoff > 1000 div tuple_size(Names) ->
             R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
        true ->
-%            if (OWQSize + 10000 < WQSize) ->
-%                    log("lb with owqsize ~w wqsize ~w", [OWQSize, WQSize]),
-%                    LBSize = min(WQSize div 2, 10000),
-%                    {LBList, WQ2} = dequeueMany(WQ, LBSize),
-%                    DestPid ! {LBSize, LBList, self(), extraStateList},                            
-%                    NewBO = ets:update_counter(Bov, DestPid, LBSize),
-%                    R#r{coq=(CurOQ + 1) rem tuple_size(Names),
-%                        wq=WQ2,
-%                        minwq=MinWQ + LBSize,
-%                        sent=NumSent+ LBSize};
-%               true ->
-                    COQ = array:get(CurOQ, OutQ),
-                    ListSize = min(diskq:count(COQ), 100),
-                    {StateList, COQ2} = dequeueMany(COQ, ListSize),
+            COQ = array:get(CurOQ, OutQ),
+            ListSize = min(diskq:count(COQ), 10000),
+            {StateList, COQ2} = dequeueMany(COQ, ListSize),
+            case StateList of
+                [] ->
+%%                     if (OWQSize < 10000 andalso WQSize > 20000) ->
+%%                             log("lb with owqsize ~w", [OWQSize]),
+%%                             {LBList, WQ2} = dequeueMany(WQ, 10000),
+%%                             DestPid ! {10000, LBList, self(), extraStateList},                            
+%%                             NewBO = ets:update_counter(Bov, DestPid, 1),
+%%                             R#r{coq=(CurOQ + 1) rem tuple_size(Names),
+%%                                 wq=WQ2,
+%%                                 minwq=MinWQ + 10000,
+%%                                sent=NumSent+10000};
+%%                       true ->
+                            R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
+%%                     end;
+                _ ->
                     DestPid ! {ListSize, StateList, self(), stateList},
-                    NewBO = ets:update_counter(Bov, DestPid, ListSize),
+                    NewBO = ets:update_counter(Bov, DestPid, 1),
                     R#r{coq=(CurOQ + 1) rem tuple_size(Names),
                         oq=array:set(CurOQ, COQ2, OutQ),
-                        oqs=OQSize - ListSize,
+                        oqs=OQSize-ListSize,
                         minwq=MinWQ + ListSize,
-                        sent=NumSent + ListSize}
- %           end
+                        sent=NumSent+ListSize}
+            end
     end.
 
 profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oqs=OQSize, minwq=MinWQ, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
@@ -982,11 +982,4 @@ min(X, Y) ->
             Y;
     true ->
             X
-    end.
-
-max(X, Y) ->
-    if X > Y ->
-            X;
-    true ->
-            Y
     end.
