@@ -87,6 +87,7 @@ my %hash   = map { $_, 1 } @nodes;
 my %data_files;
 my %last_sec;
 my %last_sr;
+my %ht_max;
 foreach my $h (@nodes) {
   my $temp = "$h.gnuplot.data";
   open($data_files{$h},">$temp")  || die "could not open $temp";
@@ -139,6 +140,7 @@ while (<LOG>) {
           #$last_sr{$node} = $recvd;
           my $FH = $data_files{$node};
           print $FH "$secs $wq $hstates $estates $recvd $msgq\n";
+          $ht_max{$node} = $hstates;
        }
      }
   #}
@@ -146,11 +148,26 @@ while (<LOG>) {
 }
 
 close LOG;
+$total_ht_states = 0;
 foreach my $h (@nodes) {
   close($data_files{$h});
+  $total_ht_states += $ht_max{$h};
 }
 print BO_DATA "$max_time $bo_count\n";
 close BO_DATA;
+
+#
+# print total number of unique states in human readable format
+#
+if ($total_ht_states > 100000000) {
+  $total_ht_statesm = int($total_ht_states / 1000000);
+  print "Total unique states so far: $total_ht_statesm * 10^6\n";
+} elsif ($total_ht_states > 100000) {
+  $total_ht_statesk = int($total_ht_states / 1000);
+  print "Total unique states so far: $total_ht_statesk * 10^3\n";
+} else {
+  print "Total unique states so far: $total_ht_states\n";
+}
 
 plotit('lines','Work Queue States',2,'wq');
 plotit('lines','Hash Table States',3,'ht');
@@ -159,11 +176,11 @@ plotit('lines','MsgQ Length',6,'mq');
 plotit('histeps','Backoff Mode Nodes',2,'bo');
 plotit('lines','States Recvd',5,'sr');
 
-print "the following nodes are currently in backoff mode:\n[";
-foreach my $n (keys %backoff) {
-   print "$n ";
-}
-print "]\n";
+#print "the following nodes are currently in backoff mode:\n[";
+#foreach my $n (keys %backoff) {
+#   print "$n ";
+#}
+#print "]\n";
 
 #system "gv wq_plot.eps &";
 #system "gv se_plot.eps &";
