@@ -860,9 +860,9 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                                      (OQSize > 10000 * tuple_size(Names)) ->
                                           R2 = sendOutQ(R),
                                           recvStates(R2);
-%                                     (MinWQ + 20000 < WQSize) ->
-%                                          R2 = sendOutQ(R),
-%                                          recvStates(R2);
+                                     (MinWQ + 20000 < WQSize) ->
+                                          R2 = sendOutQ(R),
+                                          recvStates(R2);
                                      WQSize > 0 -> R;
                                      (OQSize > 0) ->
                                           R2 = sendOutQ(R),
@@ -883,30 +883,30 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ
     if Backoff > 10000 div tuple_size(Names) ->
             R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
        true ->
-%            if (OWQSize + 10000 < WQSize) ->
-%                    log("lb with owqsize ~w wqsize ~w", [OWQSize, WQSize]),
-%                    LBSize = min(WQSize div 2, 10000),
-%                    {LBList, WQ2} = dequeueMany(WQ, LBSize),
-%                    DestPid ! {LBSize, LBList, self(), extraStateList},                            
-%                    NewBO = ets:update_counter(Bov, DestPid, LBSize),
-%                    R#r{coq=(CurOQ + 1) rem tuple_size(Names),
-%                        wq=WQ2,
-%                        minwq=MinWQ + LBSize,
-%                        sent=NumSent+ LBSize};
-%               true ->
-            COQ = array:get(CurOQ, OutQ),
-            ListSize = min(diskq:count(COQ), 100),
-            if ListSize == 0 ->
-                    R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
-               true ->
-                    {StateList, COQ2} = dequeueMany(COQ, ListSize),
-                    DestPid ! {ListSize, StateList, self(), stateList},
-                    NewBO = ets:update_counter(Bov, DestPid, ListSize),
+            if (OWQSize + 10000 < WQSize) ->
+                    LBSize = min(WQSize div 2, 100),
+                    {LBList, WQ2} = dequeueMany(WQ, LBSize),
+                    DestPid ! {LBSize, LBList, self(), extraStateList},                            
+                    NewBO = ets:update_counter(Bov, DestPid, LBSize),
                     R#r{coq=(CurOQ + 1) rem tuple_size(Names),
-                        oq=array:set(CurOQ, COQ2, OutQ),
-                        oqs=OQSize - ListSize,
-                        minwq=MinWQ + ListSize,
-                        sent=NumSent + ListSize}
+                        wq=WQ2,
+                        minwq=MinWQ + LBSize,
+                        sent=NumSent+ LBSize};
+               true ->
+                    COQ = array:get(CurOQ, OutQ),
+                    ListSize = min(diskq:count(COQ), 100),
+                    if ListSize == 0 ->
+                            R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
+                       true ->
+                            {StateList, COQ2} = dequeueMany(COQ, ListSize),
+                            DestPid ! {ListSize, StateList, self(), stateList},
+                            NewBO = ets:update_counter(Bov, DestPid, ListSize),
+                            R#r{coq=(CurOQ + 1) rem tuple_size(Names),
+                                oq=array:set(CurOQ, COQ2, OutQ),
+                                oqs=OQSize - ListSize,
+                                minwq=MinWQ + ListSize,
+                                sent=NumSent + ListSize}
+                    end
             end
     end.
 
