@@ -894,8 +894,11 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ
 %                        minwq=MinWQ + LBSize,
 %                        sent=NumSent+ LBSize};
 %               true ->
-                    COQ = array:get(CurOQ, OutQ),
-                    ListSize = min(diskq:count(COQ), 100),
+            COQ = array:get(CurOQ, OutQ),
+            ListSize = min(diskq:count(COQ), 100),
+            if ListSize == 0 ->
+                    R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
+               true ->
                     {StateList, COQ2} = dequeueMany(COQ, ListSize),
                     DestPid ! {ListSize, StateList, self(), stateList},
                     NewBO = ets:update_counter(Bov, DestPid, ListSize),
@@ -904,7 +907,7 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ
                         oqs=OQSize - ListSize,
                         minwq=MinWQ + ListSize,
                         sent=NumSent + ListSize}
- %           end
+            end
     end.
 
 profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oqs=OQSize, minwq=MinWQ, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
