@@ -62,7 +62,7 @@ makeLink([Host | Rest], Args) ->
     end.
 
 load_balancer(Names,Ratio,State) ->
-   log("load_balancer State = ~w",[State]),
+   %log("load_balancer State = ~w",[State]),
    case State of
    idle ->
       receive {im_feeling_idle,IdlePid} -> ok end,
@@ -71,10 +71,10 @@ load_balancer(Names,Ratio,State) ->
       load_balancer(Names,Ratio,{collecting,IdlePid,length(tuple_to_list(Names))-1,0,null});
    {collecting,IdlePid,0,MaxLen,MaxPid} ->
       if (MaxLen > 50) -> 
-         log("sending {send_some_of_your_wq_to,~w,~w} to ~w",[IdlePid,Ratio,MaxPid]),
+         %log("sending {send_some_of_your_wq_to,~w,~w} to ~w",[IdlePid,Ratio,MaxPid]),
          MaxPid ! {send_some_of_your_wq_to,IdlePid,Ratio};
       true -> 
-         log("sending {extraStateList,[]} to ~w",[IdlePid]),
+         %log("sending {extraStateList,[]} to ~w",[IdlePid]),
          IdlePid ! {extraStateList,[]}
       end,
       load_balancer(Names,Ratio,idle);
@@ -138,7 +138,7 @@ start(P) ->
        log("Murphi found an error in a startstate:~n~s",[ErrorMsg]);
     _ -> 
        CanonicalizedStartStates = canonicalizeStates(SS,init:get_argument(nosym) == error),
-       log("owner of 1st startstate is ~w",[owner(hd(CanonicalizedStartStates),Names,Seed)]),
+       %log("owner of 1st startstate is ~w",[owner(hd(CanonicalizedStartStates),Names,Seed)]),
        tryToSendStates( null_state, CanonicalizedStartStates, Names, initBov(Names),Seed),
        NumSent = length(startstates()),
        log("(Root): sent ~w startstates",[NumSent],1),
@@ -218,7 +218,7 @@ spawnAndCheck(Node, Module, Fun, Args) ->
 
 %% Purpose : Implements Stern & Dill's termination algorithm
 detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict,Seed,{BoCount,NumDisc,NumRecyc}) ->
-    log("DetectTerm: ROOT: NumDone = ~w, GlobalSent = ~w, GlobalRecd = ~w",[NumDone,GlobalSent,GlobalRecd],1),
+    %log("DetectTerm: ROOT: NumDone = ~w, GlobalSent = ~w, GlobalRecd = ~w",[NumDone,GlobalSent,GlobalRecd],1),
     if NumDone == tuple_size(Names) andalso GlobalSent == GlobalRecd ->
             lists:map(fun(X) -> X ! die end, tuple_to_list(Names)),
             ProbNoOmission = dict:fold(fun(_,X,Y) -> X*Y end,1.0,ProbDict),
@@ -228,11 +228,11 @@ detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict,See
                 {done, Name, Sent, Recd, States, ProbNoOmission, ThisBoStats} ->
 					{ThisBoCount,ThisNumDisc,ThisNumRecyc} = ThisBoStats,
 					BoStats = {BoCount+ThisBoCount,NumDisc+ThisNumDisc,NumRecyc+ThisNumRecyc},
-                    log("got done from ~w",[Name],1),
+                    %log("got done from ~w",[Name],1),
                     detectTermination(NumDone+1, GlobalSent+Sent, GlobalRecd+Recd, NumStates+States, 
                                       Names, dict:store(Name,ProbNoOmission,ProbDict),Seed, BoStats);
                 {not_done, Name, Sent, Recd, States,ThisBoStats} ->
-                    log("got not_done from ~w",[Name]),
+                    %log("got not_done from ~w",[Name]),
 					{ThisBoCount,ThisNumDisc,ThisNumRecyc} = ThisBoStats,
 					BoStats = {BoCount-ThisBoCount,NumDisc-ThisNumDisc,NumRecyc-ThisNumRecyc},
                     detectTermination(NumDone-1, GlobalSent-Sent, GlobalRecd-Recd, NumStates-States, 
@@ -424,7 +424,7 @@ constructCounterExample(UseSym,[TraceHead | TraceTail], SetOfStates,Cex) ->
 checkAck([]) -> ok;
 checkAck(L) -> 
    receive {ack, PID} ->
-      log("Received ack from ~w", [PID]),
+      %log("Received ack from ~w", [PID]),
       checkAck(lists:delete(PID, L));
    _ -> checkAck(L)
    end.
@@ -912,7 +912,7 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ
 
 profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oqs=OQSize, minwq=MinWQ, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
     Runtime = secondsSince(T0),
-    if (Runtime > (LPT + PR)) ->
+    if (Runtime > (LPT + PR - 1)) ->
        %{_, Mem} = process_info(self(),memory),
        {CpuTime,_} = statistics(runtime),
        WorkQ_heapSize =  erts_debug:flat_size(WorkQ) * 8, 
