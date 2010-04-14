@@ -1,6 +1,6 @@
 
 const
-  N : 1;
+  N : 6;
   M : 10;
 
 type
@@ -35,8 +35,8 @@ rule "set flag"
   flag := TRUE;
 end;
 
-invariant "noflag"  
-  ! flag
-;
+--invariant "noflag"  
+--  ! flag
+--;
 
 
