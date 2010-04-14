@@ -64,7 +64,7 @@ CFLAGS=-Wno-deprecated -DCATCH_DIV
 	${MU} -c -b $<
 
 %.so: %.C ${PREACH_ROOT}/MurphiEngine/include/*
-	g++ -DERLANG -DCATCH_DIV -Wno-write-strings -Wno-deprecated -g -lm  -o $@ -fpic -shared $<  \
+	g++ -O2 -DERLANG -DCATCH_DIV -Wno-write-strings -Wno-deprecated -g -lm  -o $@ -fpic -shared $<  \
 	-I${MURPHI_INCLUDE} \
 	-I${ERLANG_INTERFACE_INCLUDE} \
 	-I${ERLANG_ERTS_INCLUDE} \

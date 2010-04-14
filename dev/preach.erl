@@ -23,6 +23,7 @@
     fc,    % flow control record
     selfbo, % backoff flag 
     bov, % backoff vector
+    owq, % other work queues
     recyc, % recycling flag
     usesym, % symmetry reduction flag
     bo_bound,  % BackOff bound; max size of message queue before backoff kicks in
@@ -163,8 +164,7 @@ start(P) ->
 				BoCount,NumRecyc,NumDisc]);
       cex -> ok
        end
-    end,
-    init:stop().
+    end.
 
 
 %%----------------------------------------------------------------------
@@ -574,6 +574,15 @@ initBov(Names) ->
         _ -> bov
     end.
 
+initOtherWQ(Names) ->
+    case ets:info(owq) of
+        undefined ->
+            OWQ = ets:new(owq, [set, named_table, public]),
+            lists:map(fun(Pid) -> ets:insert(owq, {Pid,0}) end, tuple_to_list(Names)),
+            OWQ;
+        _ -> owq
+    end.
+
 
 startstates() ->
     murphi_interface:startstates().
@@ -633,7 +642,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     case (catch reach(#r{ss=null,
     %% ENDIF
         names=Names, term=Terminator, th=TraceH,
-        sent=0, recd=0, count=0, oqs=0, coq=0, minwq=0, hcount=0,bov=initBov(Names), selfbo=false, 
+        sent=0, recd=0, count=0, oqs=0, coq=0, minwq=0, hcount=0,bov=initBov(Names), owq=initOtherWQ(Names), selfbo=false, 
         wq=WQ, req=ReQ, oq=OQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), 
@@ -713,12 +722,11 @@ reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, 
           true ->
 		  OutQ2 = queueStates(State, NewCanonicalizedStates, OutQ, Seed, Names),
 		  NewWQ = Q2,
-		  NewNumSent = NumSent + length(NewCanonicalizedStates),
 		  NewCount = Count+1,
 		  NewRecycling = false,
 		  NewBoStats = BoStats,
 		  NewOQSize = OQSize + length(NewCanonicalizedStates),
-		  reach(R2#r{tf=TF, oq=OutQ2, oqs=NewOQSize, wq=NewWQ, count=NewCount, sent=NewNumSent, recyc=NewRecycling, bo_stats=NewBoStats})
+		  reach(R2#r{tf=TF, oq=OutQ2, oqs=NewOQSize, wq=NewWQ, count=NewCount, recyc=NewRecycling, bo_stats=NewBoStats})
           end
        end
     end.
@@ -757,7 +765,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
     Runtime = secondsSince(T0),
     Finished = WQSize == 0 andalso OQSize == 0,
 %    {_, RuntimeLen} = process_info(self(),message_queue_len),
-    if (WQSize == 0 andalso (Runtime > 30) andalso not LB_pending) ->
+    if (WQSize == 0 andalso OQSize == 0 andalso (Runtime > 30) andalso not LB_pending) ->
 	    LBPid ! { im_feeling_idle, self() },
 	    recvStates(R#r{lb_pending=true});
 	  true ->
@@ -774,7 +782,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			   {State, Prev, Pid, state} ->
                                case Pid of
                                    none -> nop;
-                                   Src -> Src ! {ack, self(), WQSize}
+                                   Src -> Src ! {ack, self(), 1, WQSize}
                                end,
 			       Test = murphi_interface:brad_hash(State),
 			       if Test == false -> % State not present
@@ -810,7 +818,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                            {Count, StateList, Pid, stateList} ->
                                case Pid of
                                    none -> nop;
-                                   _ -> Pid ! {ack, self(), WQSize}
+                                   _ -> Pid ! {ack, self(), Count, WQSize}
                                end,
                                NewStatePairs = lists:filter(
                                                  fun({X,Y}) -> murphi_interface:brad_hash(X) == false end,
@@ -819,8 +827,16 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                                Q2 = enqueueMany(WorkQ, NewStates),
                                TF2 = enqueueMany(TF, NewStatePairs),
                                recvStates(R#r{recd=NumRecd+Count, wq=Q2, tf=TF2, hcount=(Hcount+length(NewStates))});
-			   {ack, Pid, OtherWQSize} ->
-			       ets:update_counter(Bov, Pid, -1),
+                           {Count, StateList, Pid, extraStateList} ->
+                               case Pid of
+                                   none -> nop;
+                                   _ -> Pid ! {ack, self(), Count, WQSize}
+                               end,
+                               Q2 = enqueueMany(WorkQ, StateList),
+                               recvStates(R#r{recd=NumRecd+Count, wq=Q2});
+			   {ack, Pid, AckSize, OtherWQSize} ->
+			       ets:update_counter(Bov, Pid, -AckSize),
+			       ets:insert(owq, {Pid, OtherWQSize}),
 			       recvStates(R#r{bov=Bov, minwq=min(OtherWQSize, MinWQ)});
 			   die -> 
 			       log("got die!!!",[],5), done;
@@ -844,6 +860,9 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                                      (OQSize > 10000 * tuple_size(Names)) ->
                                           R2 = sendOutQ(R),
                                           recvStates(R2);
+%                                     (MinWQ + 20000 < WQSize) ->
+%                                          R2 = sendOutQ(R),
+%                                          recvStates(R2);
                                      WQSize > 0 -> R;
                                      (OQSize > 0) ->
                                           R2 = sendOutQ(R),
@@ -854,27 +873,38 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 	       end
        end.
 
-
-sendOutQ(R=#r{names=Names, coq=CurOQ, bov=Bov, oqs=OQSize, oq=OutQ, minwq=MinWQ}) ->
+% minwq(WQSize) -> list:fold_left(fun (X,A) -> min(X,A) end, WQSize, ets:match(owq, {'_', '$1'})).
+    
+sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ, minwq=MinWQ, wq=WQ}) ->
     DestPid = element(CurOQ+1, Names),
+    WQSize = count(WQ),
     [{_, Backoff}] = ets:lookup(Bov, DestPid),
-    if Backoff > 100 ->
+    [{_, OWQSize}] = ets:lookup(owq, DestPid),
+    if Backoff > 10000 div tuple_size(Names) ->
             R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
        true ->
-            COQ = array:get(CurOQ, OutQ),
-            ListSize = min(diskq:count(COQ), 10000),
-            {StateList, COQ2} = dequeueMany(COQ, ListSize),
-            case StateList of
-                [] ->
-                    R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
-                _ ->
+%            if (OWQSize + 10000 < WQSize) ->
+%                    log("lb with owqsize ~w wqsize ~w", [OWQSize, WQSize]),
+%                    LBSize = min(WQSize div 2, 10000),
+%                    {LBList, WQ2} = dequeueMany(WQ, LBSize),
+%                    DestPid ! {LBSize, LBList, self(), extraStateList},                            
+%                    NewBO = ets:update_counter(Bov, DestPid, LBSize),
+%                    R#r{coq=(CurOQ + 1) rem tuple_size(Names),
+%                        wq=WQ2,
+%                        minwq=MinWQ + LBSize,
+%                        sent=NumSent+ LBSize};
+%               true ->
+                    COQ = array:get(CurOQ, OutQ),
+                    ListSize = min(diskq:count(COQ), 100),
+                    {StateList, COQ2} = dequeueMany(COQ, ListSize),
                     DestPid ! {ListSize, StateList, self(), stateList},
-                    NewBO = ets:update_counter(Bov, DestPid, 1),
+                    NewBO = ets:update_counter(Bov, DestPid, ListSize),
                     R#r{coq=(CurOQ + 1) rem tuple_size(Names),
-                                   oq=array:set(CurOQ, COQ2, OutQ),
-                                   oqs=OQSize-ListSize,
-                                   minwq=MinWQ + 1}
-            end
+                        oq=array:set(CurOQ, COQ2, OutQ),
+                        oqs=OQSize - ListSize,
+                        minwq=MinWQ + ListSize,
+                        sent=NumSent + ListSize}
+ %           end
     end.
 
 profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oqs=OQSize, minwq=MinWQ, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT})->
@@ -952,4 +982,11 @@ min(X, Y) ->
             Y;
     true ->
             X
+    end.
+
+max(X, Y) ->
+    if X > Y ->
+            X;
+    true ->
+            Y
     end.
