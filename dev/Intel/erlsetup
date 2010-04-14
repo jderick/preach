@@ -130,7 +130,7 @@ def sshRace(node, server, erlmon_path, args)
 
 end
 
-$semaphore = Semaphore.new(20)
+$semaphore = Semaphore.new(500)
 $mutex = Mutex.new
 $good = File.open("good_servers.txt","w")
 $bad  = File.open( "bad_servers.txt","w")

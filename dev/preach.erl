@@ -7,6 +7,7 @@
     wq, % work queue
     oq, % out queue
     coq, % current output queue
+    last_sent, % last # sent when coq = 0
     minwq, % minimum peer workq count
     oqs, % out queue size
     req, % recycle queue
@@ -642,7 +643,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     case (catch reach(#r{ss=null,
     %% ENDIF
         names=Names, term=Terminator, th=TraceH,
-        sent=0, recd=0, count=0, oqs=0, coq=0, minwq=0, hcount=0,bov=initBov(Names), owq=initOtherWQ(Names), selfbo=false, 
+        sent=0, recd=0, count=0, oqs=0, coq=0, last_sent=0, minwq=0, hcount=0,bov=initBov(Names), owq=initOtherWQ(Names), selfbo=false, 
         wq=WQ, req=ReQ, oq=OQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), 
@@ -759,7 +760,7 @@ secondsSince(T0) ->
 recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req=ReQ, oq=OutQ, wq=WorkQ, tf=TF, t0=T0,
 		 th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym, seed=Seed,
 		 bo_bound=BoBound, unbo_bound=UnboBound, lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats,
-                oqs=OQSize, coq=CurOQ, minwq=MinWQ}) ->
+                oqs=OQSize, coq=CurOQ, minwq=MinWQ, last_sent=LastSent}) ->
     R = profiling(R0),
     WQSize = count(WorkQ),
     Runtime = secondsSince(T0),
@@ -851,7 +852,11 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			       TermDelay ! not_done,
 			       recvStates(R);
 			  true ->
-				  if (MinWQ < 100 andalso OQSize > 0) ->
+				  if (CurOQ == tuple_size(Names) andalso LastSent == NumSent andalso WQSize > 0) ->
+                                          R#r{coq=0};
+                                     (CurOQ == tuple_size(Names)) ->
+                                          recvStates(R#r{last_sent=NumSent, coq=0});
+                                     (MinWQ < 100 andalso OQSize > 0) ->
                                           R2 = sendOutQ(R),
                                           recvStates(R2);
                                      (MinWQ < 10000 andalso OQSize > 1000 * tuple_size(Names)) ->
@@ -881,14 +886,14 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ
     [{_, Backoff}] = ets:lookup(Bov, DestPid),
     [{_, OWQSize}] = ets:lookup(owq, DestPid),
     if Backoff > 10000 div tuple_size(Names) ->
-            R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
+            R#r{coq=(CurOQ + 1)};
        true ->
             if (OWQSize + 10000 < WQSize) ->
                     LBSize = min(WQSize div 2, 100),
                     {LBList, WQ2} = dequeueMany(WQ, LBSize),
                     DestPid ! {LBSize, LBList, self(), extraStateList},                            
                     NewBO = ets:update_counter(Bov, DestPid, LBSize),
-                    R#r{coq=(CurOQ + 1) rem tuple_size(Names),
+                    R#r{coq=(CurOQ + 1),
                         wq=WQ2,
                         minwq=MinWQ + LBSize,
                         sent=NumSent+ LBSize};
@@ -896,12 +901,12 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ
                     COQ = array:get(CurOQ, OutQ),
                     ListSize = min(diskq:count(COQ), 100),
                     if ListSize == 0 ->
-                            R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
+                            R#r{coq=(CurOQ + 1)};
                        true ->
                             {StateList, COQ2} = dequeueMany(COQ, ListSize),
                             DestPid ! {ListSize, StateList, self(), stateList},
                             NewBO = ets:update_counter(Bov, DestPid, ListSize),
-                            R#r{coq=(CurOQ + 1) rem tuple_size(Names),
+                            R#r{coq=(CurOQ + 1),
                                 oq=array:set(CurOQ, COQ2, OutQ),
                                 oqs=OQSize - ListSize,
                                 minwq=MinWQ + ListSize,
