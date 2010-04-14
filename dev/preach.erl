@@ -782,7 +782,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			   {State, Prev, Pid, state} ->
                                case Pid of
                                    none -> nop;
-                                   Src -> Src ! {ack, self(), WQSize}
+                                   Src -> Src ! {ack, self(), 1, WQSize}
                                end,
 			       Test = murphi_interface:brad_hash(State),
 			       if Test == false -> % State not present
@@ -818,7 +818,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                            {Count, StateList, Pid, stateList} ->
                                case Pid of
                                    none -> nop;
-                                   _ -> Pid ! {ack, self(), WQSize}
+                                   _ -> Pid ! {ack, self(), Count, WQSize}
                                end,
                                NewStatePairs = lists:filter(
                                                  fun({X,Y}) -> murphi_interface:brad_hash(X) == false end,
@@ -830,12 +830,12 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                            {Count, StateList, Pid, extraStateList} ->
                                case Pid of
                                    none -> nop;
-                                   _ -> Pid ! {ack, self(), WQSize}
+                                   _ -> Pid ! {ack, self(), Count, WQSize}
                                end,
                                Q2 = enqueueMany(WorkQ, StateList),
                                recvStates(R#r{recd=NumRecd+Count, wq=Q2});
-			   {ack, Pid, OtherWQSize} ->
-			       ets:update_counter(Bov, Pid, -1),
+			   {ack, Pid, AckSize, OtherWQSize} ->
+			       ets:update_counter(Bov, Pid, -AckSize),
 			       ets:insert(owq, {Pid, OtherWQSize}),
 			       recvStates(R#r{bov=Bov, minwq=min(OtherWQSize, MinWQ)});
 			   die -> 
@@ -873,13 +873,14 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 	       end
        end.
 
-
+% minwq(WQSize) -> list:fold_left(fun (X,A) -> min(X,A) end, WQSize, ets:match(owq, {'_', '$1'})).
+    
 sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ, minwq=MinWQ, wq=WQ}) ->
     DestPid = element(CurOQ+1, Names),
     WQSize = count(WQ),
     [{_, Backoff}] = ets:lookup(Bov, DestPid),
     [{_, OWQSize}] = ets:lookup(owq, DestPid),
-    if Backoff > 1000 div tuple_size(Names) ->
+    if Backoff > 10000 div tuple_size(Names) ->
             R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
        true ->
             if (OWQSize + 10000 < WQSize) ->
@@ -984,4 +985,11 @@ min(X, Y) ->
             Y;
     true ->
             X
+    end.
+
+max(X, Y) ->
+    if X > Y ->
+            X;
+    true ->
+            Y
     end.
