@@ -71,7 +71,7 @@ load_balancer(Names,Ratio,State) ->
       sendAllExcept(wq_length_query,Names,IdlePid),
       load_balancer(Names,Ratio,{collecting,IdlePid,length(tuple_to_list(Names))-1,0,null});
    {collecting,IdlePid,0,MaxLen,MaxPid} ->
-      if (MaxLen > 50) -> 
+      if (MaxLen > 1000) -> 
          %log("sending {send_some_of_your_wq_to,~w,~w} to ~w",[IdlePid,Ratio,MaxPid]),
          MaxPid ! {send_some_of_your_wq_to,IdlePid,Ratio};
       true -> 
@@ -802,13 +802,11 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			       recvStates(R);
 			   {send_some_of_your_wq_to,IdlePid,Ratio} ->
 			       log("got sendsome"),	    
-			       NumberToSend = (Ratio * WQSize) div 100,
-                   % go into back off mode to avoid mailbox blow up while building extraStateList msg
-                               %NumberToSend = if (NumberToSend0 > 10000) -> 10000; true -> NumberToSend0 end,
+			       WQPart = (Ratio * WQSize) div 100,
+                               NumberToSend = if (WQPart > 100000) -> 100000; true -> WQPart end,
 			       {StateList,Q2} = dequeueMany(WorkQ, NumberToSend),
 			       IdlePid ! {extraStateList, StateList},
 			       recvStates(R#r{sent=NumSent+NumberToSend, wq=Q2});
-						%recvStates(R#r{sent=NumSent, wq=Q2});
 			   {extraStateList, StateList} ->
 			       log("got extrastate"),	    
 			       StateListLen = length(StateList),
@@ -816,18 +814,19 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			       Q2 = enqueueMany(WorkQ, StateList),
 			       recvStates(R#r{recd=NumRecd+StateListLen,wq=Q2, lb_pending=(StateList == [])});
 						%recvStates(R#r{recd=NumRecd,wq=Q2, lb_pending=(StateList == [])});
-                           {Count, StateList, Pid, stateList} ->
+                           {Count, StateList, Pid, OtherWQSize, stateList} ->
                                case Pid of
                                    none -> nop;
                                    _ -> Pid ! {ack, self(), Count, WQSize}
                                end,
+			       ets:insert(owq, {Pid, OtherWQSize}),
                                NewStatePairs = lists:filter(
                                                  fun({X,Y}) -> murphi_interface:brad_hash(X) == false end,
                                                  StateList),
                                NewStates = lists:map(fun({X,Y}) -> X end, NewStatePairs),
                                Q2 = enqueueMany(WorkQ, NewStates),
                                TF2 = enqueueMany(TF, NewStatePairs),
-                               recvStates(R#r{recd=NumRecd+Count, wq=Q2, tf=TF2, hcount=(Hcount+length(NewStates))});
+                               recvStates(R#r{recd=NumRecd+Count, wq=Q2, tf=TF2, minwq=min(OtherWQSize, MinWQ), hcount=(Hcount+length(NewStates))});
                            {Count, StateList, Pid, extraStateList} ->
                                case Pid of
                                    none -> nop;
@@ -852,28 +851,20 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			       TermDelay ! not_done,
 			       recvStates(R);
 			  true ->
-				  if (CurOQ == tuple_size(Names) andalso LastSent == NumSent andalso WQSize > 0) ->
-                                          R#r{coq=0};
-                                     (CurOQ == tuple_size(Names)) ->
-                                          recvStates(R#r{last_sent=NumSent, coq=0});
-                                     (MinWQ < 100 andalso OQSize > 0) ->
-                                          R2 = sendOutQ(R),
-                                          recvStates(R2);
-                                     (MinWQ < 10000 andalso OQSize > 1000 * tuple_size(Names)) ->
-                                          R2 = sendOutQ(R),
-                                          recvStates(R2);
-                                     (OQSize > 10000 * tuple_size(Names)) ->
-                                          R2 = sendOutQ(R),
-                                          recvStates(R2);
-                                     (MinWQ + 20000 < WQSize) ->
-                                          R2 = sendOutQ(R),
-                                          recvStates(R2);
-                                     WQSize > 0 -> R;
-                                     (OQSize > 0) ->
-                                          R2 = sendOutQ(R),
-                                          recvStates(R2);
-                                     true -> log("wtf")
-                                  end
+                               if MinWQ < 100 orelse
+                                  OQSize > 100 * tuple_size(Names) -> % orelse
+%                                  MinWQ == 0 andalso WQSize > 10000 -> 
+                                       R2 = sendOutQ(R),
+                                       if WQSize > 0 -> R2;
+                                          true -> recvStates(R2)
+                                       end;
+                                  true ->
+                                       if WQSize > 0 -> R;
+                                          true ->
+                                               R2 = sendOutQ(R),
+                                               recvStates(R2)
+                                       end
+                               end
                        end
 	       end
        end.
@@ -882,36 +873,37 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
     
 sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ, minwq=MinWQ, wq=WQ}) ->
     DestPid = element(CurOQ+1, Names),
-    WQSize = count(WQ),
     [{_, Backoff}] = ets:lookup(Bov, DestPid),
-    [{_, OWQSize}] = ets:lookup(owq, DestPid),
     if Backoff > 10000 div tuple_size(Names) ->
-            R#r{coq=(CurOQ + 1)};
+            R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
        true ->
-            if (OWQSize + 10000 < WQSize) ->
-                    LBSize = min(WQSize div 2, 100),
-                    {LBList, WQ2} = dequeueMany(WQ, LBSize),
-                    DestPid ! {LBSize, LBList, self(), extraStateList},                            
-                    NewBO = ets:update_counter(Bov, DestPid, LBSize),
-                    R#r{coq=(CurOQ + 1),
-                        wq=WQ2,
-                        minwq=MinWQ + LBSize,
-                        sent=NumSent+ LBSize};
+            WQSize = count(WQ),
+            [{_, OWQSize}] = ets:lookup(owq, DestPid),
+            COQ = array:get(CurOQ, OutQ),
+            ListSize = min(diskq:count(COQ), 100),
+%%             if (OWQSize == 0 andalso WQSize > 10000) ->
+%%                      LBSize = min(WQSize div 2, 100),
+%%                      {LBList, WQ2} = dequeueMany(WQ, LBSize),
+%%                      DestPid ! {LBSize, LBList, self(), extraStateList},                            
+%%                      ets:update_counter(Bov, DestPid, LBSize),
+%%                      ets:update_counter(owq, DestPid, LBSize),
+%%                      R#r{coq=(CurOQ + 1) rem tuple_size(Names),
+%%                          wq=WQ2,
+%%                          minwq=MinWQ + LBSize,
+%%                         sent=NumSent+ LBSize};
+               if OWQSize < 100 andalso ListSize > 0 orelse 
+               WQSize == 0 andalso ListSize > 0 orelse
+               ListSize >= 100 ->
+                    {StateList, COQ2} = dequeueMany(COQ, ListSize),
+                    DestPid ! {ListSize, StateList, self(), WQSize, stateList},
+                    ets:update_counter(Bov, DestPid, ListSize),
+                    R#r{coq=(CurOQ + 1) rem tuple_size(Names),
+                        oq=array:set(CurOQ, COQ2, OutQ),
+                        oqs=OQSize - ListSize,
+                        minwq=MinWQ + ListSize,
+                        sent=NumSent + ListSize};
                true ->
-                    COQ = array:get(CurOQ, OutQ),
-                    ListSize = min(diskq:count(COQ), 100),
-                    if ListSize == 0 ->
-                            R#r{coq=(CurOQ + 1)};
-                       true ->
-                            {StateList, COQ2} = dequeueMany(COQ, ListSize),
-                            DestPid ! {ListSize, StateList, self(), stateList},
-                            NewBO = ets:update_counter(Bov, DestPid, ListSize),
-                            R#r{coq=(CurOQ + 1),
-                                oq=array:set(CurOQ, COQ2, OutQ),
-                                oqs=OQSize - ListSize,
-                                minwq=MinWQ + ListSize,
-                                sent=NumSent + ListSize}
-                    end
+                    R#r{coq=(CurOQ + 1) rem tuple_size(Names)}
             end
     end.
 
