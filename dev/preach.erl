@@ -21,6 +21,7 @@
     sent, % states sent
     recd, % states recd
     extra, % extra states recd
+    esent, % extra states sent
     t0,   % initial time
     fc,    % flow control record
     selfbo, % backoff flag 
@@ -646,7 +647,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,NoTrac
     case (catch reach(#r{ss=null,
     %% ENDIF
         names=Names, term=Terminator, th=TraceH,
-        sent=0, recd=0, extra=0, count=0, oqs=0, coq=0, last_sent=0, minwq=0, hcount=0,bov=initBov(Names), owq=initOtherWQ(Names), selfbo=false, 
+        sent=0, recd=0, extra=0, esent=0, count=0, oqs=0, coq=0, last_sent=0, minwq=0, hcount=0,bov=initBov(Names), owq=initOtherWQ(Names), selfbo=false, 
         wq=WQ, req=ReQ, oq=OQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), nt=NoTrace,
@@ -763,7 +764,7 @@ secondsSince(T0) ->
 recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req=ReQ, oq=OutQ, wq=WorkQ, tf=TF, t0=T0,
 		 th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym, seed=Seed,
 		 bo_bound=BoBound, unbo_bound=UnboBound, lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats,
-                oqs=OQSize, coq=CurOQ, minwq=MinWQ, last_sent=LastSent, nt=NoTrace, extra=Extra}) ->
+                oqs=OQSize, coq=CurOQ, minwq=MinWQ, last_sent=LastSent, nt=NoTrace, extra=Extra, esent=ESent}) ->
     R = profiling(R0),
     WQSize = count(WorkQ),
     Runtime = secondsSince(T0),
@@ -882,7 +883,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 
 % minwq(WQSize) -> list:fold_left(fun (X,A) -> min(X,A) end, WQSize, ets:match(owq, {'_', '$1'})).
     
-sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ, minwq=MinWQ, wq=WQ}) ->
+sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, esent=ESent, bov=Bov, oqs=OQSize, oq=OutQ, minwq=MinWQ, wq=WQ}) ->
     DestPid = element(CurOQ+1, Names),
     [{_, Backoff}] = ets:lookup(Bov, DestPid),
     if Backoff > 100 div tuple_size(Names) ->
@@ -901,7 +902,8 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ
                      R#r{coq=(CurOQ + 1) rem tuple_size(Names),
                          wq=WQ2,
                          minwq=MinWQ + LBSize,
-                        sent=NumSent+ LBSize};
+                         sent=NumSent+ LBSize,
+                         esent=ESent + LBSize};
                OWQSize < 100 andalso ListSize > 0 orelse 
                WQSize == 0 andalso ListSize > 0 orelse
                ListSize >= 100 ->
@@ -919,7 +921,7 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, bov=Bov, oqs=OQSize, oq=OutQ
     end.
 
 profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oqs=OQSize,
-               minwq=MinWQ, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT, extra=Extra})->
+               minwq=MinWQ, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT, extra=Extra, esent=ESent})->
     Runtime = secondsSince(T0),
     if (Runtime > (LPT + PR - 1)) ->
        %{_, Mem} = process_info(self(),memory),
@@ -930,9 +932,9 @@ profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, rec
             "with ~w states sent, ~w states received " ++
             "and ~w states in the queue (which is ~w bytes of heap space) " ++ 
             "and ~w states in the out queue " ++ 
-            "and Backoff = ~w, msgq len = ~w, minwq = ~w, extra = ~w", 
+            "and Backoff = ~w, msgq len = ~w, minwq = ~w, extra recd = ~w, extra sent = ~w", 
             [Count, Hcount, Runtime, Count / Runtime, CpuTime / 1000.0, 1000 * Count / CpuTime ,
-             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, OQSize, SelfBo,MsgQLen, MinWQ, Extra ],1),
+             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, OQSize, SelfBo,MsgQLen, MinWQ, Extra, ESent ],1),
        R#r{last_profiling_time=Runtime};
     true ->
        R
