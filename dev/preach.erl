@@ -863,19 +863,9 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			       TermDelay ! not_done,
 			       recvStates(R);
 			  true ->
-                               if MinWQ < 100 orelse
-                                  OQSize > 100 * tuple_size(Names) orelse
-                                  MinWQ * 5 < WQSize andalso WQSize > 10000 -> 
-                                       R2 = sendOutQ(R),
-                                       if WQSize > 0 -> R2;
-                                          true -> recvStates(R2)
-                                       end;
-                                  true ->
-                                       if WQSize > 0 -> R;
-                                          true ->
-                                               R2 = sendOutQ(R),
-                                               recvStates(R2)
-                                       end
+                               R2 = sendOutQ(R),
+                               if WQSize > 0 -> R2;
+                                  true -> recvStates(R2)
                                end
                        end
 	       end
@@ -886,27 +876,29 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, esent=ESent, bov=Bov, oqs=OQSize, oq=OutQ, minwq=MinWQ, wq=WQ}) ->
     DestPid = element(CurOQ+1, Names),
     [{_, Backoff}] = ets:lookup(Bov, DestPid),
-    if Backoff > 100 div tuple_size(Names) ->
+    WQSize = count(WQ),
+    [{_, OWQSize}] = ets:lookup(owq, DestPid),
+    if Backoff > 100 div tuple_size(Names) orelse
+       5 * WQSize < OWQSize andalso OWQSize > 10000 ->  % other node is in lb
             R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
        true ->
-            WQSize = count(WQ),
-            [{_, OWQSize}] = ets:lookup(owq, DestPid),
             COQ = array:get(CurOQ, OutQ),
             ListSize = min(diskq:count(COQ), 100),
-            if OWQSize * 5 < WQSize andalso WQSize > 10000 ->
-                     LBSize = 100,
-                     {LBList, WQ2} = dequeueMany(WQ, LBSize),
-                     DestPid ! {LBSize, LBList, self(), extraStateList},                            
-                     ets:update_counter(Bov, DestPid, 1),
-                     ets:update_counter(owq, DestPid, LBSize),
-                     R#r{coq=(CurOQ + 1) rem tuple_size(Names),
-                         wq=WQ2,
-                         minwq=MinWQ + LBSize,
-                         sent=NumSent+ LBSize,
-                         esent=ESent + LBSize};
-               OWQSize < 100 andalso ListSize > 0 orelse 
-               WQSize == 0 andalso ListSize > 0 orelse
-               ListSize >= 100 ->
+            if 
+                OWQSize * 5 < WQSize andalso WQSize > 10000 ->  % we are lb
+                    LBSize = 100,
+                    {LBList, WQ2} = dequeueMany(WQ, LBSize),
+                    DestPid ! {LBSize, LBList, self(), extraStateList},                            
+                    ets:update_counter(Bov, DestPid, 1),
+                    ets:update_counter(owq, DestPid, LBSize),
+                    R#r{coq=(CurOQ + 1) rem tuple_size(Names),
+                        wq=WQ2,
+                        minwq=MinWQ + LBSize,
+                        sent=NumSent+ LBSize,
+                        esent=ESent + LBSize};
+                OWQSize < 100 andalso ListSize > 0 orelse
+                WQSize == 0 andalso ListSize > 0 orelse
+                ListSize >= 100 ->
                     {StateList, COQ2} = dequeueMany(COQ, ListSize),
                     DestPid ! {ListSize, StateList, self(), WQSize, stateList},
                     ets:update_counter(Bov, DestPid, 1),
@@ -915,7 +907,7 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, esent=ESent, bov=Bov, oqs=OQ
                         oqs=OQSize - ListSize,
                         minwq=MinWQ + ListSize,
                         sent=NumSent + ListSize};
-               true ->
+                true ->
                     R#r{coq=(CurOQ + 1) rem tuple_size(Names)}
             end
     end.
