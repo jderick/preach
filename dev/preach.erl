@@ -878,8 +878,8 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, esent=ESent, bov=Bov, oqs=OQ
     [{_, Backoff}] = ets:lookup(Bov, DestPid),
     WQSize = count(WQ),
     [{_, OWQSize}] = ets:lookup(owq, DestPid),
-    if Backoff > 100 div tuple_size(Names) orelse
-       5 * WQSize < OWQSize andalso OWQSize > 10000
+    if Backoff > 100 div tuple_size(Names)
+       orelse 5 * WQSize < OWQSize andalso OWQSize > 10000
        ->  % other node is in lb
             R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
        true ->
