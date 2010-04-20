@@ -193,10 +193,10 @@ sub plotit($$$$) {
    open(GTEMP,">$gtemp")  || die "could not open $gtemp";
    print GTEMP "
    set nokey
-   set terminal postscript color
+   set terminal postscript color \"Times\" 20
    set data style $style
-   set ylabel \"$ylabel\"
-   set xlabel \"Seconds\"
+   set ylabel \"$ylabel\" font \"Times,20\"
+   set xlabel \"Seconds\" font \"Times,20\"
    plot \\
    "; 
    if ($tag eq 'bo') {
