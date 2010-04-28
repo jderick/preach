@@ -66,7 +66,7 @@ makeLink([Host | Rest], Args) ->
     end.
 
 load_balancer(Names,Ratio,State) ->
-   %log("load_balancer State = ~w",[State]),
+   log("load_balancer State = ~w",[State]),
    case State of
    idle ->
       receive {im_feeling_idle,IdlePid} -> ok end,
@@ -111,7 +111,6 @@ load_balancer(Names,Ratio,State) ->
 %%----------------------------------------------------------------------
 start(P) ->
     io:format("PReach $Rev: 408 $~n", []),
-    T0 = now(),
     Local = is_localMode(),
     Intel = is_intelMode(),
     if Local orelse Intel ->
@@ -135,6 +134,7 @@ start(P) ->
     lists:map(fun(X) -> X ! {lbPid, LBPid} end, tuple_to_list(Names)),
     murphi_interface:start(rundir(), model_name()),
     Seed = getintarg(seed,0),
+    T0 = now(),
     log("About to compute startstates... ",[],1),
     SS = startstates(),
     case SS of 
@@ -245,15 +245,20 @@ detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict,See
                 {error_found, State} -> 
                     Owner = owner(State,Names,Seed),
                     log("got error_found ~w, ~w",[State,Owner]),
-                    lists:map(fun(X) ->
-                                      log("Sending tc to ~w",[X]),
-                                      X ! {tc, self()}
-                              end,
-                              tuple_to_list(Names)),
-                    checkAck(tuple_to_list(Names)),
-                    log("checkAck done; Owner = ~w",[Owner]),
-                    Owner ! {find_prev, State, []},
-                    receive trace_complete -> lists:map(fun(X) -> X ! die end, tuple_to_list(Names)) end,
+                    NoTrace = init:get_argument(nt) /= error,
+                    if NoTrace ->
+                       lists:map(fun(X) -> X ! die end, tuple_to_list(Names));
+                    true ->
+                       lists:map(fun(X) ->
+                                         log("Sending tc to ~w",[X]),
+                                         X ! {tc, self()}
+                                 end,
+                                 tuple_to_list(Names)),
+                       checkAck(tuple_to_list(Names)),
+                       log("checkAck done; Owner = ~w",[Owner]),
+                       Owner ! {find_prev, State, []},
+                       receive trace_complete -> lists:map(fun(X) -> X ! die end, tuple_to_list(Names)) end
+                    end,
                     cex
             end
     end.
@@ -687,7 +692,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,NoTrac
 %%     
 %%----------------------------------------------------------------------
 
-reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks, seed=Seed} ) ->
+reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks, seed=Seed, nt=NoTrace} ) ->
    case recvStates(R) of
    done -> log("reach is done",[], 5), done;
    R1=#r{wq=WorkQueue, oq=OutQ, oqs=OQSize, tf=TF, bov=Bov, sent=NumSent, bo_stats=BoStats} ->
@@ -722,6 +727,8 @@ reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, 
              log("Found Invariant Failure: ~s",[FailedInvariant]),
              log("Just in case cex construction fails, here it is:",[]),
              printState(State),
+             log("And in case you care, here are the rules that are enabled:",[]),
+             lists:map(fun(S) -> io:format("~s~n",[S]) end, enabled_rules(State)),
              TraceH ! {error_found, State},
              traceMode(Names, TF, TraceH, UseSym,Seed);
           true ->
@@ -811,7 +818,8 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			   {send_some_of_your_wq_to,IdlePid,Ratio} ->
 			       log("got sendsome"),	    
 			       WQPart = (Ratio * WQSize) div 100,
-                               NumberToSend = if (WQPart > 100000) -> 100000; true -> WQPart end,
+                               %NumberToSend = if (WQPart > 100000) -> 100000; true -> WQPart end,
+                               NumberToSend = WQPart,
 			       {StateList,Q2} = dequeueMany(WorkQ, NumberToSend),
 			       IdlePid ! {extraStateList, StateList},
 			       recvStates(R#r{sent=NumSent+NumberToSend, wq=Q2});
@@ -879,6 +887,7 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, esent=ESent, bov=Bov, oqs=OQ
     WQSize = count(WQ),
     [{_, OWQSize}] = ets:lookup(owq, DestPid),
     if Backoff > 100 div tuple_size(Names)
+% LB OFF 1 line here
        orelse 5 * WQSize < OWQSize andalso OWQSize > 10000
        ->  % other node is in lb
             R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
@@ -886,6 +895,7 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, esent=ESent, bov=Bov, oqs=OQ
             COQ = array:get(CurOQ, OutQ),
             ListSize = min(diskq:count(COQ), 100),
             if 
+% LB OFF 11 lines here
                 OWQSize * 5 < WQSize andalso WQSize > 10000 ->  % we are lb
                     LBSize = 100,
                     {LBList, WQ2} = dequeueMany(WQ, LBSize),
@@ -932,6 +942,15 @@ profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, rec
     true ->
        R
     end.
+
+%
+% note this returns the list of rules that are both enabled
+% *and effect a state change* from the given state
+%
+enabled_rules(State) ->
+   Successors = transition(State),
+   RuleNums = lists:map(fun(Succ) -> murphi_interface:whatRuleFired(State,Succ) end, Successors),
+   lists:map(fun(RN) -> murphi_interface:rulenumToName(RN) end, RuleNums).
 
 log(Format, Vars, Verbosity) ->
 	VLevel = getintarg(verbose, verboseDefault()),

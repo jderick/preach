@@ -5,7 +5,7 @@ WORKQ_FILE = /tmp/workQueue.${USER}
 
 # -W0 turns off warnings here... 
 # remove +native if you want accurate stack dumps from the Erlang Runtime System
-ERLC_OPTIONS = +native  +\{hipe,\[o3\]\} +debug_info 
+ERLC_OPTIONS = +native +\{hipe,\[o3\]\} 
 #ERLC_OPTIONS = +debug_info 
 MURPHI_INCLUDE = ${PREACH_ROOT}/MurphiEngine/include
 #ERLANG_INTERFACE_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.2/include

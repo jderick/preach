@@ -13,6 +13,6 @@ print "$dcmd\n"; system($dcmd);
 
 $args = join(' ', @ARGV);
 
-$cmd = "erl -pa $PREACH_ROOT -run preach run -localmode -model $args";
+$cmd = "erl -pa $PREACH_ROOT -run preach run -run init stop -localmode -model $args";
 print "$cmd\n"; system $cmd;
 
