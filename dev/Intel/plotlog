@@ -187,6 +187,9 @@ plotit('lines','States Recvd',5,'sr');
 #system "gv ht_plot.eps &";
 #system "gv bo_plot.eps &";
 
+#   set xrange [0:12000]
+#   set yrange [0:1400000]
+
 sub plotit($$$$) {
    my ($style,$ylabel,$col,$tag) = @_;
    my $gtemp = "temp";
@@ -195,6 +198,8 @@ sub plotit($$$$) {
    set nokey
    set terminal postscript color \"Times\" 20
    set data style $style
+   set xrange [0:250]
+   set yrange [0:70000]
    set ylabel \"$ylabel\" font \"Times,20\"
    set xlabel \"Seconds\" font \"Times,20\"
    plot \\

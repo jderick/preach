@@ -96,7 +96,7 @@ using namespace std;
 
 extern "C" {
 
-#define MAX_NEXT_STATES 1000
+#define MAX_NEXT_STATES 20000
 
 typedef struct {
   ErlDrvPort port;
@@ -243,8 +243,31 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
       ei_encode_empty_list(d->state_buffer, &i);
       driver_output(d->port, d->state_buffer, i);
     } else if (fn == 1) {
-      int count = StartState->AllStartStatesList(d->state_buffer);
-      driver_output(d->port, d->state_buffer, count);
+/*
+      if (StartStateManager::numstartstates > MAX_NEXT_STATES) {
+        int i = 0;
+        ei_encode_version(d->state_buffer, &i);
+	    ei_encode_tuple_header(d->state_buffer, &i, 2);
+	    ei_encode_atom(d->state_buffer, &i, "error");
+	    ei_encode_string(d->state_buffer, &i, "number of start states too big for murphi engine; try increasing MAX_NEXT_STATES in MurphiEngine/include/mu_epilog.inc");
+	    //ei_encode_long(d->state_buffer, &i, (unsigned long)(Rules->whatRule()));
+        driver_output(d->port, d->state_buffer, i);
+      } else {
+*/
+        int count = StartState->AllStartStatesList(d->state_buffer);
+        if (Error.NoError())  {
+          driver_output(d->port, d->state_buffer, count);
+        } else {
+          int i = 0;
+          ei_encode_version(d->state_buffer, &i);
+	      ei_encode_tuple_header(d->state_buffer, &i, 2);
+	      ei_encode_atom(d->state_buffer, &i, "error");
+	      ei_encode_string(d->state_buffer, &i, Error.Msg());
+	      //ei_encode_long(d->state_buffer, &i, (unsigned long)(Rules->whatRule()));
+          Error.ResetErrorFlag();
+          driver_output(d->port, d->state_buffer, i);
+        }
+ //     }
     } else if (fn == 3) {
       int count = Properties->CheckInvariantsErl((buff+1), d->state_buffer);
       if (!Error.NoError())  {

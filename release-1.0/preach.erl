@@ -28,7 +28,9 @@
     lb_pending,
     lb_pid,
 	bo_stats, % 2-tuple {BackoffCount, NumRecycledStates} to report as statistics
-	seed     % seed for owner hashing
+	seed,     % seed for owner hashing
+	ft, % "flush time"
+	sb % "send buffer"
    }).
 
 
@@ -265,16 +267,46 @@ gottaBo([Owner|Rest],Bov) ->
        gottaBo(Rest, Bov)
     end.
 
+flushAll(_OwnerIndex,[],_Names,_Seed,_SendBuffer) -> ok;
+
+flushAll(OwnerIndex,[Owner | ORest], Names,Seed, SendBuffer) ->
+	{T, Count, Buf} = element(OwnerIndex,SendBuffer),
+%	log("flushAll: Sending ~w states to ~w",[Count,Owner]),
+	if (Count == 0) -> do_nothing;
+		true ->	Owner ! {Count,Buf, stateList}
+	end,
+	flushAll(OwnerIndex+1,ORest,Names,Seed,SendBuffer).	
+
 %% Purpose : To send states to corresponding owners (nodes)
+sendStates(_PrevState, [], [],_Names,_Seed,SendBuffer ) -> SendBuffer;
+
+sendStates(PrevState, [State | SRest], [Owner | ORest], Names,Seed, SendBuffer ) ->
+	OwnerIndex = 1+erlang:phash2({Seed,State},tuple_size(Names)),
+	{T, Count, Buf} = element(OwnerIndex,SendBuffer),
+	NewBuf = [{State,PrevState}|Buf],
+	NewCount = Count+1,
+	Diff = timer:now_diff(now(), T)*1.0e-3,	
+	FlushThresh = flushInterval(),
+	MaxBatch = maxBatch(),
+	NewSendBuffer = if ((NewCount >= MaxBatch) or (Diff >= FlushThresh)) ->
+%		log("sendStates: Sending ~w states to ~w",[NewCount, Owner]),
+		Owner ! {NewCount,NewBuf, stateList},
+		setelement(OwnerIndex,SendBuffer,{now(),0,[]});
+	true ->% log("sendStates: appending for owner ~w (Index ~w) - now ~w states; diff is ~w",[Owner,OwnerIndex,NewCount,Diff]),
+			setelement(OwnerIndex,SendBuffer,{T,NewCount,NewBuf})
+	end,
+%    Owner ! {{State,PrevState}, state},
+    sendStates(PrevState, SRest, ORest,Names,Seed,NewSendBuffer).
+
+%% Computes which node within Names owns State
+owner(State,Names,Seed) -> 
+    element(1+erlang:phash2({Seed,State},tuple_size(Names)), Names) .
+
 sendStates(_PrevState, [], [] ) -> ok;
 
 sendStates(PrevState, [State | SRest], [Owner | ORest] ) ->
     Owner ! {{State,PrevState}, state},
     sendStates(PrevState, SRest, ORest).
-
-%% Computes which node within Names owns State
-owner(State,Names,Seed) -> 
-    element(1+erlang:phash2({Seed,State},tuple_size(Names)), Names) .
 
 %% Purpose :  Like sendStates, but first check if the state owner "is telling"
 %%  to backoff
@@ -285,7 +317,7 @@ tryToSendStates(PrevState, States, Names,Bov,Seed ) ->
        false;
        true ->
        sendStates(PrevState, States, Owners),
-       true
+      true
     end.
 
 sendAllExcept(Msg,Names,Exception) -> 
@@ -595,6 +627,9 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
     murphi_interface:init_hash(HashSize),
     WQ = initWorkQueue(),
     TF = initTraceFile(),
+	SB = list_to_tuple(initSendBuffer(tuple_size(Names),[])),	
+	FT = now(),
+
     %% IF YOU WANT BLOOM...
     %%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
     %% ELSE
@@ -605,7 +640,8 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
         wq=WQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), 
-         last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed })) 
+         last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed,
+			sb=SB, ft=FT })) 
     of
     {'EXIT',R} -> log("EXCEPTION ~w",[R]);
     _ -> ok
@@ -640,7 +676,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,Profil
 %% Returns : done
 %%     
 %%----------------------------------------------------------------------
-reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks, seed=Seed} ) ->
+reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks, seed=Seed, sb=SendBuffer, ft=FlushTime} ) ->
    case recvStates(R) of
    done -> log("reach is done",[], 5), done;
    R1=#r{wq=WorkQueue, tf=TF, bov=Bov, sent=NumSent, bo_stats=BoStats} ->
@@ -678,22 +714,38 @@ reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, 
              TraceH ! {error_found, State},
              traceMode(Names, TF, TraceH, UseSym,Seed);
           true ->
-             SendSuccessful = tryToSendStates(State, NewCanonicalizedStates, Names, Bov,Seed),
-             if (SendSuccessful) ->
+            % SendSuccessful = tryToSendStates(State, NewCanonicalizedStates, Names, Bov,Seed,SendBuffer,FlushTime),
+			Owners = lists:map(fun(S) -> owner(S,Names,Seed) end, NewCanonicalizedStates),
+			NewSendBuffer = sendStates(State,NewCanonicalizedStates,Owners,Names,Seed,SendBuffer),
+             %if (SendSuccessful) ->
                 NewWQ = Q2,
                 NewNumSent = NumSent + length(NewCanonicalizedStates),
                 NewCount = Count+1,
                 NewRecycling = false,
-				NewBoStats = BoStats;
-             true ->
-                NewWQ = enqueue(Q2,State),
-                NewNumSent = NumSent,
-                NewCount = Count,
-                NewRecycling = true,
-				{BoCount, NumDisc,NumRecyc} = BoStats,
-				NewBoStats = {BoCount, NumDisc + length(NewCanonicalizedStates),NumRecyc+1}
-             end,
-             reach(R2#r{tf=TF, wq=NewWQ, count=NewCount, sent=NewNumSent, recyc=NewRecycling, bo_stats=NewBoStats})
+				NewBoStats = BoStats,  %;
+
+				Diff = timer:now_diff(now(), FlushTime)*1.0e-3,
+				IsEmpty = (count(Q2) == 0),
+				FlushThresh = flushInterval(),
+				if((Diff > FlushThresh) or IsEmpty) -> % flush the send buffers
+%					log("Flushing send buffer now",[]),
+					flushAll(1,tuple_to_list(Names),Names,Seed,NewSendBuffer),
+					NewSendBuffer2 = list_to_tuple(initSendBuffer(tuple_size(Names),[])),
+					NewFT = now();
+				true ->	
+					NewSendBuffer2 = NewSendBuffer,
+					NewFT = FlushTime
+				end, 
+
+             %true ->
+             %   NewWQ = enqueue(Q2,State),
+             %   NewNumSent = NumSent,
+             %   NewCount = Count,
+             %   NewRecycling = true,
+		%		{BoCount, NumDisc,NumRecyc} = BoStats,
+		%		NewBoStats = {BoCount, NumDisc + length(NewCanonicalizedStates),NumRecyc+1}
+         %    end,
+             reach(R2#r{tf=TF, wq=NewWQ, count=NewCount, sent=NewNumSent, recyc=NewRecycling, bo_stats=NewBoStats, sb=NewSendBuffer2,ft=NewFT})
           end
        end
     end.
@@ -711,6 +763,11 @@ doneNotDone(Terminator, NumSent, NumRecd, NumStates, BoStats) ->
 secondsSince(T0) ->
     {M, S, _} = now(),
     (1000000 * M + S) - T0 + 1.
+
+initSendBuffer(0, List) -> List;
+
+initSendBuffer(Size, List) ->
+	initSendBuffer(Size-1, [{now(),0,[]}|List]).
 
 %%----------------------------------------------------------------------
 %% Purpose : Polls for incoming messages within a time window
@@ -743,6 +800,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, wq=
        recvStates(R#r{lb_pending=true});
     true ->
        if (WQSize == 0) ->
+
           TermDelay = spawn(?MODULE, doneNotDone, [Terminator, NumSent, NumRecd, Hcount, BoStats]),
           Timeout = 60000;
        true -> 
@@ -762,6 +820,18 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, wq=
              true -> 
                 recvStates(R#r{recd=NumRecd+1})
              end;
+
+		  {Count,StateList,stateList} ->
+			%log("Received a stateList with size ~w", [Count]),
+			F = fun({X,Y}) -> murphi_interface:brad_hash(X) == false end,
+			NewStatePairs = lists:filter(F,StateList),
+			F2 = fun({X,Y}) -> X end,
+			NewStates = lists:map(F2, NewStatePairs),
+			Q2 = enqueueMany(WorkQ, NewStates),
+			TF2 = enqueueMany(TF, NewStatePairs),
+			recvStates(R#r{recd=NumRecd+Count, wq=Q2, tf=TF2, hcount=(Hcount+length(NewStates))});
+				
+
           {lb_nack} -> 
              log("got lb_nack",[]),
              recvStates(R#r{lb_pending=false});
@@ -858,5 +928,9 @@ dequeueMany(WQ, Num) ->
 verboseDefault() -> 1.
 
 mDefault() -> 1024.
+
+maxBatch() -> 1000.
+
+flushInterval() -> 1000.
 
 
