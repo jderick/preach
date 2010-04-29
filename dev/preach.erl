@@ -1,6 +1,6 @@
 
 -module(preach).
--export([run/0,startWorker/10,ready/1, doneNotDone/5, load_balancer/3]).
+-export([run/0,startWorker/11,ready/1, doneNotDone/5, load_balancer/3]).
 
 -record(r,
    {tf, % tracefile
@@ -24,6 +24,7 @@
     esent, % extra states sent
     t0,   % initial time
     fc,    % flow control record
+    msu,    % make successors unique flag
     selfbo, % backoff flag 
     bov, % backoff vector
     owq, % other work queues
@@ -189,6 +190,7 @@ initThreads(Names, 0) ->
 initThreads(Names, NumThreads) ->
     Local = is_localMode(),
     UseSym = init:get_argument(nosym) == error,
+    MSU = init:get_argument(msu) == error,
     CheckDeadlocks = init:get_argument(ndl) == error,
     NoTrace = init:get_argument(nt) /= error,
     BoBound0 =  getintarg(bob,10000),
@@ -199,10 +201,10 @@ initThreads(Names, NumThreads) ->
     PR = getintarg(pr,5),
     LB = getintarg(lbr,0),
     if Local ->
-            Args = [model_name(), UseSym,infinity, null, HashSize,CheckDeadlocks,NoTrace,PR,false,Seed],
+            Args = [model_name(), UseSym,infinity, null, HashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU],
             ID = spawn(preach,startWorker,Args);
        true ->
-            Args = [model_name(), UseSym,BoBound,UnboBound, HashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed ],
+            Args = [model_name(), UseSym,BoBound,UnboBound, HashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU],
             ID = spawnAndCheck(mynode(NumThreads),preach,startWorker,Args),
             link(ID)
     end,
@@ -604,6 +606,7 @@ printState(MS) ->
 transition(MS) ->
     murphi_interface:nextstates(MS).
 
+
 %% strangely, just putting murphi_interface:normalize as the first arg
 %% to lists:map below causes a compile time error - Jesse
 canonicalizeStates(L, UseSym) -> 
@@ -629,9 +632,9 @@ second({_,X}) -> X.
 %% Returns : ok
 %%     
 %%----------------------------------------------------------------------
-startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed) ->
-    log("startWorker() entered (model is ~s;UseSym is ~w;CheckDeadlocks is ~w,UseLB is ~w)~n", 
-         [ModelName,UseSym,CheckDeadlocks,UseLB],1),
+startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU) ->
+    log("startWorker() entered (model is ~s;UseSym is ~w;CheckDeadlocks is ~w;UseLB is ~w;MSU is ~w)~n", 
+         [ModelName,UseSym,CheckDeadlocks,UseLB,MSU],1),
     %crypto:start(),
     receive {Names, names} -> do_nothing end,
     receive {trace_handler, TraceH} -> nop end,
@@ -656,7 +659,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,NoTrac
         wq=WQ, req=ReQ, oq=OQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), nt=NoTrace,
-         last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed })) 
+         last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed,msu=MSU })) 
     of
     {'EXIT',R} -> log("EXCEPTION ~w",[R]);
     _ -> ok
@@ -692,7 +695,7 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,NoTrac
 %%     
 %%----------------------------------------------------------------------
 
-reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks, seed=Seed, nt=NoTrace} ) ->
+reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks, seed=Seed, msu=MSU} ) ->
    case recvStates(R) of
    done -> log("reach is done",[], 5), done;
    R1=#r{wq=WorkQueue, oq=OutQ, oqs=OQSize, tf=TF, bov=Bov, sent=NumSent, bo_stats=BoStats} ->
@@ -703,7 +706,8 @@ reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, 
      %     profiling(R)
      %  end,
        R2 = profiling(R1),
-       NewStates = transition(State),
+       NewStates = if (MSU) -> lists:usort(transition(State));
+                   true ->     transition(State) end,
        case NewStates of 
        {error,ErrorMsg,RuleNum}  ->
           log("Murphi Engine threw an error evaluating rule \"~s\" (likely an assertion in the Murphi model failed):~n~s",
