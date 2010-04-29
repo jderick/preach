@@ -198,8 +198,6 @@ sub plotit($$$$) {
    set nokey
    set terminal postscript color \"Times\" 20
    set data style $style
-   set xrange [0:250]
-   set yrange [0:70000]
    set ylabel \"$ylabel\" font \"Times,20\"
    set xlabel \"Seconds\" font \"Times,20\"
    plot \\
