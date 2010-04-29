@@ -1,0 +1,18 @@
+#!/usr/bin/perl -w
+my $PREACH_ROOT = $ENV{PREACH_ROOT};
+my $PREACH_TEMP = $ENV{PREACH_TEMP};
+my $USER = $ENV{USER};
+$PREACH_ROOT || die "\$PREACH_ROOT not set";
+$PREACH_TEMP || die "\$PREACH_TEMP not set";
+#my $model = shift;
+#my $out = shift;
+#my $blah = $out ? "> $out" : "";
+
+$dcmd = "/bin/rm -fr $PREACH_TEMP/*$USER*";
+print "$dcmd\n"; system($dcmd);
+
+$args = join(' ', @ARGV);
+
+$cmd = "erl -pa $PREACH_ROOT -run preach run -run init stop -localmode -model $args";
+print "$cmd\n"; system $cmd;
+
