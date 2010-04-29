@@ -1,3 +1,9 @@
+IMPORTANT NOTE:
+
+THIS IS THE DEVELOPEMENT SNAPSHOT OF PREACH.  MOST USERS SHOULD USE THE 
+STABLE VERSION FOUND IN ../release-1.0.  THANKS!!!
+
+
 PReach : A distributed model checker for Murphi
 
 PReach was developed and is owned by a formal verification team at Intel
@@ -179,10 +185,6 @@ There is a perl script Intel/plotlog that uses gnuplot to create plots
 of work queue lengths, hash table state counts, expanded state counts,
 etc., using info from Preach log files.  See the comment at the top of the 
 script for usage.
-
-PReach prints full states in error traces.  This can be annoying.  For those
-that prefer "diff" traces, there is a script Intel/diff_trace_annotate.pl
-that does this.  See comment in the script for usage.
 
 
 Contacts.................................................................

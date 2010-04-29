@@ -1,0 +1,38 @@
+# YOU MUST CONFIGURE THESE VARS PRIOR TO RUNNING
+# Copy this file to ~/.preach_setup and source it from your ~/.cshrc.$USER file
+
+setenv PREACH_ROOT /path/to/preach/files
+setenv PREACH_SSH "ssh"
+setenv PREACH_TEMP /tmp
+
+# This is where Erlang is installed.  This corresponds to the
+# --prefix argument when running ./configure 
+# There should be a ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.3/lib dir
+# as well as others defined in the Makefile
+
+# NOTE: if you have a different version of erl_interface you will need to edit
+# the Makefile.  There is no guarantee it will be compatible but we have had
+# luck running with some older versions.
+
+setenv ERLANG_PREFIX /usr/local
+
+# Erlang binaries are typically installed here but on some systems may be located elsewhere
+# If they are already in your path you should not need to set this variable
+
+setenv ERLANG_BIN ${ERLANG_PREFIX}/bin
+setenv PATH ${PREACH_ROOT}:${ERLANG_BIN}:${PATH}
+
+# May be necessary if mutiple users are running jobs on same machines
+
+#setenv ERL_EPMD_PORT 4370
+
+
+# Used within Intel for Netbatch
+
+#setenv PREACH_SLOT /proj/valid/env
+#setenv PREACH_QUEUE linux1
+#setenv PREACH_CLASS SLES_X_nosusp
+#setenv PATH ${PREACH_ROOT}/Intel:${PATH}
+
+rehash
+
