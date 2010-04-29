@@ -1,0 +1,161 @@
+#!/usr/intel/pkgs/ruby/1.8.7-p72/bin/ruby
+
+require "thread" 
+
+
+class CountingSemaphore
+  attr_accessor :counter
+
+  def initialize(initvalue = 0)
+    @counter = initvalue
+    @waiting_list = []
+  end
+
+  def wait
+    Thread.critical = true
+    if (@counter -= 1) < 0
+      @waiting_list.push(Thread.current)
+      Thread.stop
+    end
+    self
+  ensure
+    Thread.critical = false
+  end
+
+  def try_down
+    Thread.critical = true
+    if (@counter -= 1) < 0
+      @counter += 1 
+      Thread.critical = false
+      result = false
+    else
+      result = true
+    end
+    Thread.critical = false
+    return result
+  end
+
+  def signal
+    Thread.critical = true
+    begin
+      if (@counter += 1) <= 0
+        t = @waiting_list.shift
+        t.wakeup if t
+      end
+    rescue ThreadError
+      retry
+    end
+    self
+  ensure
+    Thread.critical = false
+  end
+
+  alias down wait
+  alias up signal
+  alias P wait
+  alias V signal
+
+  def exclusive
+    wait
+    yield
+  ensure
+    signal
+  end
+
+  alias synchronize exclusive
+
+end
+Semaphore = CountingSemaphore
+
+$preach_path = `pwd`.chomp
+$preach_machine = ENV['PREACH_MACHINE']
+$timestamp = `date +%s`.chomp
+$ssh = ENV['PREACH_SSH']
+
+
+def sshRace(node, server, erlmon_path, args)
+  complete = false
+  primary = nil
+  timeout = nil
+  pid = 0
+  error = false
+
+  t = Thread.new do
+    cmd = "scp #{$preach_machine}:#{$preach_path}/erlmon #{server}:#{erlmon_path}"
+    puts cmd
+    f = IO.popen(cmd)
+    pid = f.pid
+    s = f.gets
+    while s != nil 
+      puts s
+      s = f.gets
+    end 
+    pid = 0
+
+    cmd = "#{$ssh} #{server} #{erlmon_path} #{args}"
+    puts cmd
+    if ($ssh == "nbjob prun --host")
+      f = IO.popen(cmd)
+    else 
+      f = IO.popen(cmd)
+      
+      pid = f.pid
+      s = f.gets
+      while s != nil 
+        puts s
+        s = f.gets
+      end
+    end
+    pid = 0
+    
+    complete = true
+  end
+  t.join(30)
+  t.kill
+ 
+  $mutex.lock
+  if (complete)
+    $good.puts node + "@" + server
+  else
+    if pid != 0
+      puts "killing " + pid.to_s
+      Process.kill 'KILL', pid 
+    end
+    
+    puts server + " unreachable"
+    $bad.puts server
+  end
+  $mutex.unlock
+
+
+end
+
+$semaphore = Semaphore.new(20)
+$mutex = Mutex.new
+$good = File.open("good_servers.txt","w")
+$bad  = File.open( "bad_servers.txt","w")
+
+$t = Array.new
+
+
+$hosts = File.read "hosts"
+$hosts.each do
+  |nodehost|
+  /(\w+)@(\w+)/.match(nodehost)
+  node = $1
+  host = $2
+  erlmon_path = "#{ENV['PREACH_TEMP']}/erlmon.#{ENV['USER']}#{$timestamp}#{node}"
+  args = "#{$preach_machine} " + node + " #{ARGV.join(' ')}"
+  $semaphore.down
+  host.chomp!
+  t = Thread.new do
+    sshRace(node, host, erlmon_path, args)
+    $semaphore.up
+  end
+  $t.push t
+end
+$t.each do
+  |t|
+  t.join
+end
+

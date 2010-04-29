@@ -1,0 +1,19 @@
+#!/usr/intel/bin/perl
+my $user = $ENV{'USER'};
+%hash;
+while (<>) {
+  die unless /^\w+\@(\w+)$/;
+  my $host = $1;
+  $hash{$host} = 1;
+}
+my @hosts = keys %hash;
+foreach my $host (@hosts) {
+  my $cmd = "ssh $host \"/bin/rm -fR /netbatch/*${user}*\"";
+  if (fork()) {
+  } else {
+    print "Launching $cmd\n";
+    system $cmd;
+    print "Done $cmd\n";
+    exit;
+  }
+}
