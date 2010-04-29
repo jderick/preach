@@ -178,6 +178,13 @@ Preach Command Line Arguments...................................................
             function to a different (but still presumably random
             and uniform) function.  
 
+-msu        Make Successors Unique.  If given, when successor states
+            are computed, any redundancies are removed before
+            sending to their owners.  This can have a performance
+            speed-up for some models (i.e. those that for whatever
+            reason have alot of different rules that often produce
+            the same next state)
+
 
 Utilities.................................................................
 
