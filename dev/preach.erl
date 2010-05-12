@@ -152,21 +152,23 @@ start(P) ->
           OmissionProb =  1.0 - ProbNoOmission,
           Dur = timer:now_diff(now(), T0)*1.0e-6,
           {CpuTime,_} = statistics(runtime),
-          io:format("----------~n" ++
-               "VERIFICATION SUCCESSFUL:~n" ++
-               "\tTotal of ~w states visited, ~w rules fired" ++
+			% BRAD: Put rules fired stats back in as part of code-cleanup
+          io:format("-- This is PReach, version DEV (1.1+)~n" ++
+			   "----------~n" ++
+               "-- VERIFICATION SUCCESSFUL:~n" ++
+               "--\tTotal of ~w states visited" ++ %, ~w rules fired" ++
 			   " (this only accurate if no error or in localmode)~n" ++
-               "\tExecution time: ~f seconds~n" ++
-               "\tStates visited per second (real time): ~w~n" ++
-               "\tStates visited per second per thread (real time): ~w~n" ++ 
-               "\tStates visited per second (cpu time): ~w~n" ++
-               "\tPr[even one omitted state] <= ~w~n" ++
-			   "\tRules fires per state: ~.2f~n" ++
-			   "\tTotal of ~w backoffs with ~w recycled states and ~w discarded states~n" ++
+               "--\tExecution time: ~.2f seconds~n" ++
+			   "--\tNumber of worker nodes: ~w~n" ++
+               "--\tStates visited per second (real time): ~w~n" ++
+               "--\tStates visited per second per worker node (real time): ~w~n" ++ 
+%               "\tStates visited per second (cpu time): ~w~n" ++
+               "--\tPr[even one omitted state] <= ~w~n" ++
+%			   "\tRules fires per state: ~.2f~n" ++
+			   "--\tTotal of ~w backoffs with ~w recycled states and ~w discarded states~n" ++
                "----------~n",
-               [NumStates, GlobalSent, Dur, trunc(NumStates/Dur), trunc((NumStates/Dur)/P),
-                trunc(1000 * NumStates/CpuTime),OmissionProb,GlobalSent/NumStates,
-				BoCount,NumRecyc,NumDisc]);
+               [NumStates, Dur, P, trunc(NumStates/Dur), trunc((NumStates/Dur)/P),
+                OmissionProb,BoCount,NumRecyc,NumDisc]);
       cex -> ok
        end
     end.
