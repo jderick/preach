@@ -96,18 +96,16 @@ using namespace std;
 
 extern "C" {
 
-#define MAX_NEXT_STATES 20000
-
 typedef struct {
   ErlDrvPort port;
   StartStateManager* start_states;
-  RuleManager* rules;
   PropertyManager* props;
   char* state_buffer;
   char* erlang_false;
   char* erlang_true;
   int size;
   state_set* brad_hash;
+  state_set* cgt_hash;
 } example_data;
 
 
@@ -126,9 +124,9 @@ static ErlDrvData example_drv_start(ErlDrvPort port, char *buff)
     /* there will be some overhead so the true limit is slightly less */
 //#define PASS_THIS_MANY_STATES 100
 #ifdef PASS_THIS_MANY_STATES
-    d->size = MAX_NEXT_STATES * BLOCKS_IN_WORLD * PASS_THIS_MANY_STATES; 
+    d->size = RULES_IN_WORLD * BLOCKS_IN_WORLD * PASS_THIS_MANY_STATES; 
 #else
-    d->size = MAX_NEXT_STATES * BLOCKS_IN_WORLD; 
+    d->size = RULES_IN_WORLD * BLOCKS_IN_WORLD; 
 #endif
     d->state_buffer = new char[d->size];
     //preachlog = fopen("/netbatch/jdbingha.preachlog","w");
@@ -189,8 +187,6 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
               driver_output(d->port, d->state_buffer, i);
             }
 		}
-        int end_time = clock();
-        //fprintf(preachlog,"J %d\n",end_time-start_time);
     } else if (fn == 10) {
       int i = 0; 
 #ifndef POINTER_TRICK
@@ -209,18 +205,14 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
       } else {
         int i = 0;
         ei_encode_version(d->state_buffer, &i);
-#define LOAD_BALANCING
-#ifdef LOAD_BALANCING
-	ei_encode_tuple_header(d->state_buffer, &i, 3);
-	ei_encode_atom(d->state_buffer, &i, "error");
-#endif
-	ei_encode_string(d->state_buffer, &i, Error.Msg());
-#ifdef LOAD_BALANCING
-	ei_encode_long(d->state_buffer, &i, (unsigned long)(Rules->whatRule()));
-#endif
+        ei_encode_tuple_header(d->state_buffer, &i, 3);
+        ei_encode_atom(d->state_buffer, &i, "error");
+        ei_encode_string(d->state_buffer, &i, Error.Msg());
+        ei_encode_long(d->state_buffer, &i, (unsigned long)(Rules->whatRule()));
         Error.ResetErrorFlag();
         driver_output(d->port, d->state_buffer, i);
       }
+/*
     } else if (fn == 21) {
       //state X,Y;
       int i = 0;
@@ -237,20 +229,21 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
       printf("Murphi Engine recieved %d states\n",in_state_count);
       ei_encode_version(d->state_buffer, &i);
       for (int j=0;j<in_state_count;j++) {
-	    ei_encode_list_header(d->state_buffer, &i, 1);
+        ei_encode_list_header(d->state_buffer, &i, 1);
         i += Rules->AllNextStatesList((buff+1)+(BLOCKS_IN_WORLD*j), d->state_buffer);
       }
       ei_encode_empty_list(d->state_buffer, &i);
       driver_output(d->port, d->state_buffer, i);
+*/
     } else if (fn == 1) {
 /*
       if (StartStateManager::numstartstates > MAX_NEXT_STATES) {
         int i = 0;
         ei_encode_version(d->state_buffer, &i);
-	    ei_encode_tuple_header(d->state_buffer, &i, 2);
-	    ei_encode_atom(d->state_buffer, &i, "error");
-	    ei_encode_string(d->state_buffer, &i, "number of start states too big for murphi engine; try increasing MAX_NEXT_STATES in MurphiEngine/include/mu_epilog.inc");
-	    //ei_encode_long(d->state_buffer, &i, (unsigned long)(Rules->whatRule()));
+        ei_encode_tuple_header(d->state_buffer, &i, 2);
+        ei_encode_atom(d->state_buffer, &i, "error");
+        ei_encode_string(d->state_buffer, &i, "number of start states too big for murphi engine; try increasing MAX_NEXT_STATES in MurphiEngine/include/mu_epilog.inc");
+        //ei_encode_long(d->state_buffer, &i, (unsigned long)(Rules->whatRule()));
         driver_output(d->port, d->state_buffer, i);
       } else {
 */
@@ -352,6 +345,74 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
       ei_encode_version(d->state_buffer, &i);
       ei_encode_ulong(d->state_buffer, &i,(unsigned long)(d->brad_hash->NumCollisions()));
       driver_output(d->port, d->state_buffer, i);
+    } else if (fn == 21) {
+      int count = Rules->OneNextState((buff+1), d->state_buffer);
+      if (Error.NoError())  {
+        driver_output(d->port, d->state_buffer, count);
+      } else {
+        int i = 0;
+        ei_encode_version(d->state_buffer, &i);
+        ei_encode_tuple_header(d->state_buffer, &i, 3);
+        ei_encode_atom(d->state_buffer, &i, "error");
+        ei_encode_string(d->state_buffer, &i, Error.Msg());
+        ei_encode_long(d->state_buffer, &i, (unsigned long)(Rules->whatRule()));
+        Error.ResetErrorFlag();
+        driver_output(d->port, d->state_buffer, i);
+      }
+    } else if (fn == 22) {
+      unsigned int rule = *((unsigned int *)(buff+1));
+      Rules->rule_mask[rule]=(char)1;
+      driver_output(d->port, d->state_buffer, 0);      
+    } else if (fn == 23) {
+      int i = 0;
+      ei_encode_version(d->state_buffer, &i);
+      ei_encode_long(d->state_buffer, &i, (unsigned long)(RULES_IN_WORLD));
+      driver_output(d->port, d->state_buffer, i);
+    } else if (fn == 24) {
+      unsigned long hash_MB = *((unsigned int*)(buff+1));
+      unsigned long hash_Bytes = 1024*1024*hash_MB;
+      unsigned long hsize0 = hash_Bytes * 8 / state_set::bits_per_state();
+      unsigned long hsize = NextPrime(hsize0);
+      d->cgt_hash = new state_set(hsize); 
+      driver_output(d->port, d->state_buffer, 0);      
+    } else if (fn == 25) {
+        //int start_time = clock();
+		memcpy(workingstate->bits, (buff+1), BLOCKS_IN_WORLD);
+        state* sPtr = workingstate;
+		if ( d->cgt_hash->full ) {
+           int i = 0;
+           ei_encode_version(d->state_buffer, &i);
+	       ei_encode_atom(d->state_buffer, &i, "full");
+           driver_output(d->port, d->state_buffer, i);
+        } else {
+		   if ( d->cgt_hash->is_present(sPtr)) {
+		      driver_output(d->port, d->erlang_true, 8);
+	       } else {
+		      driver_output(d->port, d->erlang_false, 9);
+		   }
+        }
+   } else if (fn == 26) {
+		memcpy(workingstate->bits, (buff+1), BLOCKS_IN_WORLD);
+        state* sPtr = workingstate;
+		if ( d->cgt_hash->simple_was_present(sPtr,true,true)) {
+            if (Error.NoError())   {
+		      driver_output(d->port, d->erlang_true, 8);
+            } else {
+              int i = 0;
+              ei_encode_version(d->state_buffer, &i);
+	          ei_encode_string(d->state_buffer, &i, Error.Msg());
+              driver_output(d->port, d->state_buffer, i);
+            }
+	    } else {
+            if (Error.NoError())   {
+		      driver_output(d->port, d->erlang_false, 9);
+            } else {
+              int i = 0;
+              ei_encode_version(d->state_buffer, &i);
+	          ei_encode_string(d->state_buffer, &i, Error.Msg());
+              driver_output(d->port, d->state_buffer, i);
+            }
+		}
    } else {
       printf("Big trouble in Murphi Engine... exitting\n");
       exit(1);

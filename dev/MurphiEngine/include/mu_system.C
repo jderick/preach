@@ -389,11 +389,14 @@ StartStateManager::StateName(StatePtr p)
 RuleManager::RuleManager() : rules_fired(0)
 {
   NumTimesFired = new unsigned int [RULES_IN_WORLD];
+  rule_mask = new char [RULES_IN_WORLD];
   generator = new NextStateGenerator;
 
   // initialize check timesfired
-  for (int i=0; i<RULES_IN_WORLD; i++)  
+  for (int i=0; i<RULES_IN_WORLD; i++)  {
     NumTimesFired[i]=0;
+    rule_mask[i]=0;
+  }
 };
 
 RuleManager::~RuleManager()
@@ -687,6 +690,38 @@ int RuleManager::AllNextStatesList(char* s, char* l)
   ei_encode_empty_list(l, &i);
         //printf("\n");
 
+  return i;
+}
+
+int RuleManager::OneNextState(char* s, char* l)
+{
+  memcpy(workingstate->bits, s, BLOCKS_IN_WORLD);
+
+  state origstate(workingstate);
+  setofrules * fire = EnabledTransition();
+  state *nextstate = 0;
+  int i = 0; 
+
+  ei_encode_version(l, &i);
+
+  int j = 0;
+  for ( what_rule=0; what_rule<numrules; what_rule++) {
+    if ((!rule_mask[what_rule]) && fire->in(what_rule) && generator->Priority(what_rule)<=minp) {
+      nextstate = NextState();
+        //printf("%d ",j++);
+      if (Error.NoError())  {
+         if ( StateCmp(&origstate,nextstate)!=0) {
+	       ei_encode_binary(l, &i, nextstate->bits, BLOCKS_IN_WORLD); 
+	       *workingstate = origstate;
+           break;
+           return i;
+         }
+      } else {
+         return 0;
+      }
+    } 
+  }
+  ei_encode_atom(l, &i, "null");
   return i;
 }
 

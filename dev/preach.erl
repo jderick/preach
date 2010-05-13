@@ -1,6 +1,6 @@
 
 -module(preach).
--export([run/0,startWorker/11,ready/1, doneNotDone/5, load_balancer/3]).
+-export([run/0,startWorker/12,ready/1, doneNotDone/5, load_balancer/3]).
 
 -record(r,
    {tf, % tracefile
@@ -13,6 +13,7 @@
     req, % recycle queue
     ss, % state set
     hcount, % # states in hash file
+    cgt_hcount, % # states in cgt hash file
     count, % # states expanded
     names, % process list
     id, % index into names array 
@@ -25,19 +26,19 @@
     t0,   % initial time
     fc,    % flow control record
     msu,    % make successors unique flag
-    selfbo, % backoff flag 
     bov, % backoff vector
     owq, % other work queues
     recyc, % recycling flag
     usesym, % symmetry reduction flag
-    bo_bound,  % BackOff bound; max size of message queue before backoff kicks in
-    unbo_bound,% UnBackOff bound; when message queue gets this small and we're in back-off mode, we send Unbackoff
     checkdeadlocks,% 
     nt,%  no trace file
     profiling_rate, % determines how often profiling info is spat out
     last_profiling_time, % keeps track of number of calls to profiling()
     lb_pending,
     lb_pid,
+    has_cgt, % flag indicating if the model has a CGT property
+    cgthdt,  % Can Get To Hash Distance Threshold; states with CGT distances greater or equal
+             % to this value get stored in the CGT hash table.
 	bo_stats, % 2-tuple {BackoffCount, NumRecycledStates} to report as statistics
 	seed     % seed for owner hashing
    }).
@@ -134,6 +135,8 @@ start(P) ->
     LBPid = spawn(?MODULE, load_balancer, [Names,getintarg(lbr,0),idle]),
     lists:map(fun(X) -> X ! {lbPid, LBPid} end, tuple_to_list(Names)),
     murphi_interface:start(rundir(), model_name()),
+    case init:get_argument(nhr) of error -> Nhr = []; {ok,[Nhr]} -> ok end,
+    case murphi_interface:has_cangetto() of true -> cgt_mask_nonhelpful_rules(Nhr,true); _ -> ok end,
     Seed = getintarg(seed,0),
     T0 = now(),
     log("About to compute startstates... ",[],1),
@@ -148,10 +151,10 @@ start(P) ->
        NumSent = length(startstates()),
        log("(Root): sent ~w startstates",[NumSent],1),
        case detectTermination(0, NumSent, 0, 0, Names, dict:new(),Seed,{0,0,0}) of
-      {verified,NumStates,ProbNoOmission, GlobalSent,{BoCount,NumDisc,NumRecyc}} ->
+      {verified,NumStates,ProbNoOmission, _,{BoCount,NumDisc,NumRecyc}} ->
           OmissionProb =  1.0 - ProbNoOmission,
           Dur = timer:now_diff(now(), T0)*1.0e-6,
-          {CpuTime,_} = statistics(runtime),
+          %{CpuTime,_} = statistics(runtime),
 			% BRAD: Put rules fired stats back in as part of code-cleanup
           io:format("-- This is PReach, version DEV (1.1+)~n" ++
 			   "----------~n" ++
@@ -194,19 +197,22 @@ initThreads(Names, NumThreads) ->
     UseSym = init:get_argument(nosym) == error,
     MSU = init:get_argument(msu) == error,
     CheckDeadlocks = init:get_argument(ndl) == error,
+    case init:get_argument(nhr) of
+    error -> Nhr = [];
+    {ok,[Nhr]} -> ok
+    end,
     NoTrace = init:get_argument(nt) /= error,
-    BoBound0 =  getintarg(bob,10000),
+    Cgthdt =  getintarg(cgthdt,0),
     Seed =  getintarg(seed,0),
-    BoBound = if (BoBound0 == 0) -> infinity; true -> BoBound0 end,
-    UnboBound =  getintarg(unbob,if BoBound == infinity -> null; true -> (BoBound div 20) end ),
     HashSize = getintarg(m,mDefault()),
+    CgtHashSize = getintarg(cm,1024),
     PR = getintarg(pr,5),
     LB = getintarg(lbr,0),
     if Local ->
-            Args = [model_name(), UseSym,infinity, null, HashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU],
+            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU,Nhr,Cgthdt],
             ID = spawn(preach,startWorker,Args);
        true ->
-            Args = [model_name(), UseSym,BoBound,UnboBound, HashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU],
+            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU,Nhr,Cgthdt],
             ID = spawnAndCheck(mynode(NumThreads),preach,startWorker,Args),
             link(ID)
     end,
@@ -246,21 +252,21 @@ detectTermination(NumDone, GlobalSent, GlobalRecd, NumStates, Names,ProbDict,See
 					BoStats = {BoCount-ThisBoCount,NumDisc-ThisNumDisc,NumRecyc-ThisNumRecyc},
                     detectTermination(NumDone-1, GlobalSent-Sent, GlobalRecd-Recd, NumStates-States, 
                                       Names, dict:erase(Name,ProbDict),Seed, BoStats);
-                {error_found, State} -> 
+                {error_found, StateList} -> 
+                    [State | StateListTl] = StateList,
                     Owner = owner(State,Names,Seed),
-                    log("got error_found ~w, ~w",[State,Owner]),
-                    NoTrace = init:get_argument(nt) /= error,
+                    NoTrace = init:get_argument(nt) =/= error,
                     if NoTrace ->
                        lists:map(fun(X) -> X ! die end, tuple_to_list(Names));
                     true ->
                        lists:map(fun(X) ->
-                                         log("Sending tc to ~w",[X]),
+                                         log("Sending tc to ~w",[X],5),
                                          X ! {tc, self()}
                                  end,
                                  tuple_to_list(Names)),
                        checkAck(tuple_to_list(Names)),
                        log("checkAck done; Owner = ~w",[Owner]),
-                       Owner ! {find_prev, State, []},
+                       Owner ! {find_prev, State, StateListTl},
                        receive trace_complete -> lists:map(fun(X) -> X ! die end, tuple_to_list(Names)) end
                     end,
                     cex
@@ -320,12 +326,6 @@ queueStates(PrevState, States, OutQ, Seed, Names) ->
 sendAllExcept(Msg,Names,Exception) -> 
     NamesList = tuple_to_list(Names),
     PeersList = lists:filter(fun(Y) -> Y /= Exception end,NamesList),
-    lists:map(fun(Pid) -> Pid ! {Msg,self()} end,PeersList).
-
-%% Purpose: Broadcast Msg
-sendAllPeers(Msg,Names) -> 
-    NamesList = tuple_to_list(Names),
-    PeersList = lists:filter(fun(Y) -> Y /= self() end,NamesList),
     lists:map(fun(Pid) -> Pid ! {Msg,self()} end,PeersList).
 
 printTrace([]) -> ok;
@@ -617,12 +617,6 @@ canonicalizeStates(L, UseSym) ->
        true -> L 
     end.
 
-checkInvariants(MS) ->
-    case murphi_interface:checkInvariants(MS) of
-        pass -> null;
-        {fail, R} -> R
-    end.
-
 second({_,X}) -> X.
 
 %%----------------------------------------------------------------------
@@ -634,7 +628,7 @@ second({_,X}) -> X.
 %% Returns : ok
 %%     
 %%----------------------------------------------------------------------
-startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU) ->
+startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU,Nhr,Cgthdt) ->
     log("startWorker() entered (model is ~s;UseSym is ~w;CheckDeadlocks is ~w;UseLB is ~w;MSU is ~w)~n", 
          [ModelName,UseSym,CheckDeadlocks,UseLB,MSU],1),
     %crypto:start(),
@@ -651,16 +645,25 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,NoTrac
     OQ = array:from_list(initOutQueues(tuple_size(Names))),
     ReQ = initRecycleQueue(),
     TF = initTraceFile(),
+    % CGT stuff
+    case (murphi_interface:has_cangetto()) of
+    true ->
+       murphi_interface:cgt_init_hash(CgtHashSize),
+       cgt_mask_nonhelpful_rules(Nhr,false),
+       ets:new(steps, [ordered_set, named_table, public]),
+       lists:map(fun(D) -> ets:insert(steps,{D,0}) end, lists:seq(0,100));
+    false -> ok end,
     %% IF YOU WANT BLOOM...
     %%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
     %% ELSE
     case (catch reach(#r{ss=null,
     %% ENDIF
         names=Names, term=Terminator, th=TraceH,
-        sent=0, recd=0, extra=0, esent=0, count=0, oqs=0, coq=0, last_sent=0, minwq=0, hcount=0,bov=initBov(Names), owq=initOtherWQ(Names), selfbo=false, 
+        sent=0, recd=0, extra=0, esent=0, count=0, oqs=0, coq=0, last_sent=0, minwq=0, cgt_hcount=0, hcount=0,bov=initBov(Names), owq=initOtherWQ(Names), 
         wq=WQ, req=ReQ, oq=OQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
-         bo_bound=BoBound, unbo_bound=UnboBound, lb_pid = LBPid, lb_pending=(not UseLB), nt=NoTrace,
+         lb_pid = LBPid, lb_pending=(not UseLB), nt=NoTrace, has_cgt = murphi_interface:has_cangetto(),
+         cgthdt = Cgthdt,
          last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed,msu=MSU })) 
     of
     {'EXIT',R} -> log("EXCEPTION ~w",[R]);
@@ -697,57 +700,87 @@ startWorker(ModelName, UseSym, BoBound, UnboBound,HashSize,CheckDeadlocks,NoTrac
 %%     
 %%----------------------------------------------------------------------
 
-reach(R=#r{names=Names, count=Count, th=TraceH, recyc=Recycling, usesym=UseSym, checkdeadlocks=CheckDeadlocks, seed=Seed, msu=MSU} ) ->
+check_CGT(_,R=#r{has_cgt=false}) -> R;
+check_CGT(State, R=#r{th=TraceH, tf=TF, names=Names, usesym=UseSym, seed=Seed, cgt_hcount=Cgt_hcount, cgthdt=Cgthdt}) ->
+   case search_CGT(State) of
+   {failure,Reason,StateList} ->
+      log("Found a CGT violation, reason being ~w; CGT suffix has length ~w~n",[Reason,length(StateList)]),
+      TraceH ! {error_found, StateList},
+      traceMode(Names, TF, TraceH, UseSym, Seed);
+   {can_get_there,Dist,StateList} -> 
+      %log("CGT in ~w steps~n",[Dist],5), 
+      %ets:update_counter(steps, Dist, 1),
+      if (Dist > Cgthdt) ->
+         HashPrefixLen = Dist - R#r.cgthdt,
+         lists:map(fun(X) -> murphi_interface:cgt_hash_add(X) end,
+                   lists:sublist(StateList,HashPrefixLen)),
+         R#r{cgt_hcount=Cgt_hcount+HashPrefixLen};
+      true -> 
+         R
+      end
+   end.
+
+check_invariants(State, _=#r{th=TraceH, tf=TF, names=Names, usesym=UseSym, seed=Seed}) ->
+   case murphi_interface:checkInvariants(State) of
+   pass -> ok;
+   {fail, FailedInvariant} ->
+      log("Found Invariant Failure: ~s",[FailedInvariant]),
+      log("Just in case cex construction fails, here it is:",[]),
+      printState(State),
+      log("And in case you care, here are the rules that are enabled:",[]),
+      lists:map(fun(S) -> io:format("~s~n",[S]) end, enabled_rules(State)),
+      TraceH ! {error_found, [State]},
+      traceMode(Names, TF, TraceH, UseSym, Seed)
+   end.
+
+expand_a_state(State, R=#r{count=Count,oq=OutQ, tf=TF, th=TraceH, names=Names, usesym=UseSym, 
+                           seed=Seed, oqs=OQSize,msu=MSU, checkdeadlocks=CheckDeadlocks}) ->
+   NewStates = if (MSU) -> lists:usort(transition(State));
+               true ->     transition(State) end,
+   case NewStates of 
+   {error,ErrorMsg,RuleNum}  ->
+      log("Murphi Engine threw an error evaluating rule \"~s\" (likely an assertion in the Murphi model failed):~n~s",
+          [murphi_interface:rulenumToName(RuleNum),ErrorMsg]),
+      log("Just in case cex construction fails, here it is:",[]),
+      printState(State),
+      TraceH ! {error_found, [State]},
+      traceMode(Names, TF, TraceH, UseSym, Seed);
+   _ ->
+      if (CheckDeadlocks andalso NewStates == []) ->
+         log("Found (global) deadlock state.",[]),
+         log("Just in case cex construction fails, here it is:",[]),
+         printState(State),
+         TraceH ! {error_found, [State]},
+         traceMode(Names, TF, TraceH, UseSym, Seed);
+      true -> 
+         NewCanonicalizedStates = canonicalizeStates(NewStates, UseSym),
+         OutQ2 = queueStates(State, NewCanonicalizedStates, OutQ, Seed, Names),
+         NewCount = Count+1,
+         NewOQSize = OQSize + length(NewCanonicalizedStates),
+         R#r{oq=OutQ2, oqs=NewOQSize, count=NewCount }
+      end
+   end.
+
+reach(R=#r{}) ->
    case recvStates(R) of
-   done -> log("reach is done",[], 5), done;
-   R1=#r{wq=WorkQueue, oq=OutQ, oqs=OQSize, tf=TF, bov=Bov, sent=NumSent, bo_stats=BoStats} ->
-       {[State], Q2} = dequeue(WorkQueue),
-     %  if Recycling -> % prevent too much printing during recycling
-     %     nop;
-     %  true ->
-     %     profiling(R)
-     %  end,
-       R2 = profiling(R1),
-       NewStates = if (MSU) -> lists:usort(transition(State));
-                   true ->     transition(State) end,
-       case NewStates of 
-       {error,ErrorMsg,RuleNum}  ->
-          log("Murphi Engine threw an error evaluating rule \"~s\" (likely an assertion in the Murphi model failed):~n~s",
-              [murphi_interface:rulenumToName(RuleNum),ErrorMsg]),
-          log("Just in case cex construction fails, here it is:",[]),
-          printState(State),
-          TraceH ! {error_found, State},
-          traceMode(Names, TF, TraceH, UseSym,Seed);
-       _ ->
-          if (CheckDeadlocks andalso NewStates == []) ->
-             log("Found (global) deadlock state.",[]),
-             log("Just in case cex construction fails, here it is:",[]),
-             printState(State),
-             TraceH ! {error_found, State},
-             traceMode(Names, TF, TraceH, UseSym,Seed);
-          true -> ok
-          end,
-          NewCanonicalizedStates = canonicalizeStates(NewStates, UseSym),
-          FailedInvariant = checkInvariants(State),
-          if (FailedInvariant /= null) ->
-             log("Found Invariant Failure: ~s",[FailedInvariant]),
-             log("Just in case cex construction fails, here it is:",[]),
-             printState(State),
-             log("And in case you care, here are the rules that are enabled:",[]),
-             lists:map(fun(S) -> io:format("~s~n",[S]) end, enabled_rules(State)),
-             TraceH ! {error_found, State},
-             traceMode(Names, TF, TraceH, UseSym,Seed);
-          true ->
-		  OutQ2 = queueStates(State, NewCanonicalizedStates, OutQ, Seed, Names),
-		  NewWQ = Q2,
-		  NewCount = Count+1,
-		  NewRecycling = false,
-		  NewBoStats = BoStats,
-		  NewOQSize = OQSize + length(NewCanonicalizedStates),
-		  reach(R2#r{tf=TF, oq=OutQ2, oqs=NewOQSize, wq=NewWQ, count=NewCount, recyc=NewRecycling, bo_stats=NewBoStats})
-          end
-       end
-    end.
+   done -> done;
+   R1 ->
+      R11 = profiling(R1),
+      {[State], NewWq} = dequeue(R11#r.wq),
+      case check_CGT(State,R11#r{wq=NewWq}) of 
+      done -> done;
+      R2 -> 
+         case check_invariants(State,R2) of
+         done -> done;
+         ok -> 
+            case expand_a_state(State,R2) of
+            done -> done;
+            R3 -> reach(R3)
+            end
+         end
+      end
+   end.
+
 
 doneNotDone(Terminator, NumSent, NumRecd, NumStates, BoStats) ->
     receive not_done ->
@@ -774,10 +807,10 @@ secondsSince(T0) ->
 %%        NewStates is an accumulating list of the new received states;
 %%           QSize keeps track of the size of the working Queue
 %%----------------------------------------------------------------------
-recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req=ReQ, oq=OutQ, wq=WorkQ, tf=TF, t0=T0,
-		 th=TraceH, names=Names, term=Terminator, bov=Bov, selfbo=SelfBo, usesym=UseSym, seed=Seed,
-		 bo_bound=BoBound, unbo_bound=UnboBound, lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats,
-                oqs=OQSize, coq=CurOQ, minwq=MinWQ, last_sent=LastSent, nt=NoTrace, extra=Extra, esent=ESent}) ->
+recvStates(R0=#r{sent=NumSent, recd=NumRecd, hcount=Hcount, wq=WorkQ, tf=TF, t0=T0,
+		 th=TraceH, names=Names, term=Terminator, bov=Bov, usesym=UseSym, seed=Seed,
+		 lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats,
+                oqs=OQSize, minwq=MinWQ, nt=NoTrace, extra=Extra }) ->
     R = profiling(R0),
     WQSize = count(WorkQ),
     Runtime = secondsSince(T0),
@@ -843,9 +876,9 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
                                end,
 			       ets:insert(owq, {Pid, OtherWQSize}),
                                NewStatePairs = lists:filter(
-                                                 fun({X,Y}) -> murphi_interface:brad_hash(X) == false end,
+                                                 fun({X,_}) -> murphi_interface:brad_hash(X) == false end,
                                                  StateList),
-                               NewStates = lists:map(fun({X,Y}) -> X end, NewStatePairs),
+                               NewStates = lists:map(fun({X,_}) -> X end, NewStatePairs),
                                Q2 = enqueueMany(WorkQ, NewStates),
                                if NoTrace ->
                                        TF2 = TF;
@@ -867,7 +900,7 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, count=NumStates, hcount=Hcount, req
 			   die -> 
 			       log("got die!!!",[],5), done;
 			   {tc, Pid}   ->
-			       log("got tc",[]),
+			       log("got tc",[],5),
 			       Pid ! {ack, self()},
 			       traceMode(Names, TF, TraceH, UseSym, Seed)
 		       end
@@ -929,7 +962,7 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, esent=ESent, bov=Bov, oqs=OQ
             end
     end.
 
-profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oqs=OQSize,
+profiling(R=#r{count=Count,cgt_hcount=CGT_hcount,hcount=Hcount, t0=T0, sent=NumSent, recd=NumRecd, oqs=OQSize,
                minwq=MinWQ, wq=WorkQ,profiling_rate=PR,last_profiling_time=LPT, extra=Extra, esent=ESent})->
     Runtime = secondsSince(T0),
     if (Runtime > (LPT + PR - 1)) ->
@@ -940,10 +973,11 @@ profiling(R=#r{selfbo=SelfBo,count=Count,hcount=Hcount, t0=T0, sent=NumSent, rec
        log( "~w states expanded; ~w states in hash table, in ~w s (~.1f per sec) (cpu time: ~.1f; ~.1f per second ) " ++
             "with ~w states sent, ~w states received " ++
             "and ~w states in the queue (which is ~w bytes of heap space) " ++ 
-            "and ~w states in the out queue " ++ 
-            "and Backoff = ~w, msgq len = ~w, minwq = ~w, extra recd = ~w, extra sent = ~w", 
+            "and ~w states in the out queue, " ++ 
+            "msgq len = ~w, minwq = ~w, extra recd = ~w, extra sent = ~w, " ++
+            "and CGT_hcount = ~w",
             [Count, Hcount, Runtime, Count / Runtime, CpuTime / 1000.0, 1000 * Count / CpuTime ,
-             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, OQSize, SelfBo,MsgQLen, MinWQ, Extra, ESent ],1),
+             NumSent, NumRecd, diskq:count(WorkQ), WorkQ_heapSize, OQSize, MsgQLen, MinWQ, Extra, ESent, CGT_hcount ],1),
        R#r{last_profiling_time=Runtime};
     true ->
        R
@@ -960,6 +994,7 @@ enabled_rules(State) ->
 
 log(Format, Vars, Verbosity) ->
 	VLevel = getintarg(verbose, verboseDefault()),
+	%VLevel = 5,
 	if Verbosity =< VLevel -> log(Format, Vars);
 		true -> noop
 	end.
@@ -1009,16 +1044,64 @@ pmap(F, L) ->
     [receive {Pid, Result} -> Result end
      || Pid <- [spawn(fun() -> Parent ! {self(), F(X)} end)
                 || X <- L]].
-min(X, Y) ->
-    if X > Y ->
-            Y;
-    true ->
-            X
-    end.
 
-max(X, Y) ->
-    if X > Y ->
-            X;
-    true ->
-            Y
-    end.
+min(X, Y) -> if X > Y -> Y; true -> X end.
+
+%
+%  {bound_hit,StateList}
+%  {deadlock,StateList}
+%  {error,StateList}
+%  cangetthere
+%
+%
+search_CGT(500,StateList) -> {failure,bound_of_500_hit,lists:reverse(StateList)};
+search_CGT(N,StateList) ->
+   Head = hd(StateList),
+%   log("CGT: search_CGT entered (~w)~n",[N]),
+   case (murphi_interface:cgt_hash_query(Head) orelse murphi_interface:is_q_state(Head)) of
+   true -> 
+       log("CGT: returning can_get_there (~w)~n",[N],5),
+       {can_get_there,N,lists:reverse(tl(StateList))};
+   false ->
+      Succ = murphi_interface:cgt_successor(Head),
+      case Succ of 
+      null -> {failure,deadlock,lists:reverse(StateList)}; 
+      {error,_,_} -> {failure,error,lists:reverse(StateList)}; 
+      _ -> 
+         case (lists:member(Succ,StateList)) of 
+         true -> {failure,loop,lists:reverse(lists:append([Succ],StateList))}; 
+         false -> search_CGT(N+1,lists:append([Succ],StateList))
+         end
+      end
+   end.
+search_CGT(State) -> search_CGT(0,[State]).
+
+
+%
+% tells the murphi engine to mask (i.e. disable) all rules not
+% deemed to be helpful.  But it only masks them in the successor function
+%
+cgt_mask_nonhelpful_rules(Nhr0,Print) ->
+   case Nhr0 of
+   [] -> 
+      if Print -> log("All rules deemed helpful (use -nhr to designate some rules as non-helpful)",[]);
+      true -> ok end;
+   _ ->
+      RuleCount = murphi_interface:rule_count(),
+      AllRules = lists:seq(0,RuleCount-1),
+      Nhr = string:join(Nhr0,"|"),
+      NonHelpfulRules = 
+         lists:filter(
+           fun(RuleNum) ->
+              RuleName = murphi_interface:rulenumToName(RuleNum),
+              (re:run(RuleName,Nhr) =/= nomatch)
+           end,
+           AllRules),
+      lists:map(fun(R) -> murphi_interface:cgt_mask_rule(R) end, NonHelpfulRules),
+      if Print ->
+         log("The following nonhelpful rules will be disabled for CGT checking:",[]),
+         lists:map(fun(R) -> log("~s",[murphi_interface:rulenumToName(R)]) end, NonHelpfulRules);
+      true -> ok end
+   end.
+
+

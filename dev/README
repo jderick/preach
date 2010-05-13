@@ -186,6 +186,58 @@ Preach Command Line Arguments...................................................
             the same next state)
 
 
+Can Get To feature (experimental).........................................
+
+Preach currently handles CTL properties of the form AGEFq, where q is a 
+state assertion.  We can this "Can get to" q, or CGT(q).  There can be
+at most one such property, and is specified in the murphi code in the
+(admittedly clunky) syntax:
+
+liveness "CGT"
+  true
+CANGETTO
+  q
+
+Where q is a state assertion.
+Since this is a not technically a liveness property, the word liveness is
+misleading.  To verify CGT(q), Preach does a forward search from each 
+reachable state.  This forward search fires "helpful" rules in some
+arbitrary sequence and checks that a q-state is found.  If a q-state 
+is indeed found ,we call the resulting sequence of states a CGT
+suffix.  To reduce redundant work, some or all of the states in the CGT 
+suffix are stored in an special CGT hash table, and subsequently CGT
+suffix contstruction can safely stop whenever a q-state or a CGT hashed
+state is found.  If CGT suffix creation fails, a counterexample trace 
+(formed by constructing the path to the reached state concatenated with 
+the failed CGT suffix) is printed.  CGT suffix failure can happen for 3 reasons
+1. A loop is found in the CGT suffix
+2. A deadlock occurs, in the sense that a state is reached where no helpful
+   rule is enabled
+3. The CGT suffix grows to length 500
+Here are the CGT related flags Preach takes
+
+-nhr r1 r2 ... rk 
+
+   Specify the non helpful rules (there are typically more helpful rules
+   than nonhelpful, so it is easier to specify the latter).  Here
+   r1 - rk are strings, and rule whos name contains any of these strings
+   as a substring are deemed nonhelpful.  For example for german's protocol
+   we use -nhr SendReq Store . Without -nhr all rules will be considered
+   helpful.
+
+-cgthdt k
+
+   CGT hash distance threshold.  All states on a CGT suffix except for the
+   last k are stored in the CGT hash.  Using k=0 will result in all states
+   being hashed, while k=500 will result in no states being hashed.
+   The defailt is k=0. 
+
+-cm j
+
+   Allocate j Megabytes for the CGT hash table. Default is 1024.
+
+
+
 Utilities.................................................................
 
 There is a perl script Intel/plotlog that uses gnuplot to create plots

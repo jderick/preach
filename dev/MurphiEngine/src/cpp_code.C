@@ -4113,7 +4113,7 @@ static void generate_liverules(ste *enclosures, liveness *thelive )
 
 char *liveness::generate_code()
 {
-  printf("LIVENESS IS ALIVE\n");
+  printf("Found a Can Get To property\n");
   /* generate the parameters to the function for the rule. */
   char *params;
   int rule_int;
