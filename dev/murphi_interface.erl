@@ -4,7 +4,9 @@
 	 is_p_state/1, is_q_state/1, has_cangetto/0, print_diff/2,fasthash/1,
          normalize/1,fireRule/2,rulenumToName/1, startstateToName/1, brad_hash/1,
          whatRuleFired/2,init_hash/1,probNoOmission/0,canonicalize/1, 
-         equivalentStates/2, numberOfHashCollisions/0 ]).
+         equivalentStates/2, numberOfHashCollisions/0, 
+% stuff added to support CGT....
+         cgt_init_hash/1, cgt_hash_query/1, cgt_hash_add/1, cgt_successor/1, cgt_mask_rule/1, rule_count/0 ]).
 
 
 start(Path, SharedLib) ->
@@ -82,6 +84,19 @@ equivalentStates(X,Y) ->
     R.
 numberOfHashCollisions() -> 
     binary_to_term(call_port({20,<<0>>})).
+cgt_successor(Y) -> 
+    binary_to_term(call_port({21, Y})).
+cgt_mask_rule(RuleNum) -> 
+    call_port({22,list_to_binary([RuleNum rem 256,RuleNum div 256])}), ok.
+rule_count() -> 
+    binary_to_term(call_port({23, <<0>>})).
+cgt_init_hash(Size) -> 
+    call_port({24,list_to_binary([Size rem 256,Size div 256])}), ok.
+cgt_hash_query(X) -> 
+    binary_to_term(call_port({25,X})).
+% JESSE: this needs to be enhanced to detect the full hash table error
+cgt_hash_add(X) -> 
+    call_port({26,X}), ok.
 
 call_port(Msg) ->
     murphi_int ! {call, self(), Msg},

@@ -331,7 +331,7 @@ int state_set::bits_per_state()
 }
   
 state_set::state_set (unsigned int table_size )
-: table_size (table_size), num_elts(0), num_elts_reduced(0), num_collisions(0)
+: table_size (table_size), num_elts(0), num_elts_reduced(0), num_collisions(0), full(false)
 {
 #ifndef HASHC
   table = new state [table_size];
@@ -572,6 +572,100 @@ state_set::print_capacity( void )
        << "\t   * Use option \"-k\" or \"-m\" to increase this, if necessary.\n"; 
 #endif
 }
+bool 
+state_set::is_present( state *& in )
+{
+  unsigned int *key = h3->hash(in, true);
+  unsigned int h1 = key[0] % table_size;
+  unsigned int h2;
+  register unsigned int h = h1;
+  register unsigned int num_bits = args->num_bits.value;
+  register unsigned int mask1 = (~0UL) << (num_bits>32 ? 0 : 32-num_bits);
+  register unsigned int mask2 = num_bits>32 ? (~0UL)<<(64-num_bits) : 0UL;
+  register unsigned int addr, offset;
+  register unsigned int c1 = key[1]&mask1;
+  register unsigned int c2 = key[2]&mask2;
+  register unsigned int t1, t2;
+
+  unsigned int probe = 0;
+
+
+// hash compaction, uses ordered hashing
+// the state-insertion is done in two steps: search and insertion
+
+  // search - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  h2 = 1 + c1 % (table_size-1);   // calculation uses compressed value
+
+  do 
+  {
+    // calculate address and offset in table
+    // 32 bit arithmetic not sufficient and may cause overflow
+    // addr = (h*num_bits) / 32
+    // offset = (h*num_bits) % 32
+    offset = (h&0xffffUL)*num_bits;
+    addr = (((h>>16)*num_bits)<<11) + (offset>>5);
+    offset &= 0x1fUL;
+
+    if (is_empty(h))
+      return(false);   // search unsuccessful
+
+    // read compressed value from table
+    t1 = (table[addr]<<offset | (offset==0 ? 0 : table[addr+1]>>(32-offset))) 
+         & mask1;
+    t2 = (table[addr+1]<<offset | (offset==0 ? 0 : table[addr+2]>>(32-offset))) 
+         & mask2;
+
+    if (t1==c1 ? t2 < c2 : t1 < c1)
+      return(false);    // search unsuccessful
+    
+    if (t1==c1 && t2==c2)
+      return(true);   // search successful
+
+    h = (h+h2) % table_size;
+    num_collisions++;
+    probe++;
+    if (probe==table_size)
+      //Error.Notrace("Closed hash table full.");
+      return(false);
+  } while (TRUE);
+  full = true;
+  return false; // JESSE: i hypothesize that this should never happen
+
+};
+
+/****************************************
+  Modification:
+  1) 1 Dec 93 Norris Ip: 
+  check -sym option when checking was_present()
+  add StateCmp(state l, state r)
+  2) 24 Feb 94 Norris Ip:
+  added -debugsym option to run two hash tables in parallel
+  for debugging purpose
+  3) 8 March 94 Norris Ip:
+  merge with the latest rel2.6
+****************************************/
+
+/********************
+  $Log: mu_state.C,v $
+  Revision 1.3  1999/01/29 08:28:09  uli
+  efficiency improvements for security protocols
+
+  Revision 1.2  1999/01/29 07:49:11  uli
+  bugfixes
+
+  Revision 1.4  1996/08/07 18:54:33  ip
+  last bug fix on NextRule/SetNextEnabledRule has a bug; fixed this turn
+
+  Revision 1.3  1996/08/07 01:00:18  ip
+  Fixed bug on what_rule setting during guard evaluation; otherwise, bad diagnoistic message on undefine error on guard
+
+  Revision 1.2  1996/08/07 00:15:26  ip
+  fixed while code generation bug
+
+  Revision 1.1  1996/08/07 00:14:46  ip
+  Initial revision
+
+********************/
 
 /****************************************
   Modification:

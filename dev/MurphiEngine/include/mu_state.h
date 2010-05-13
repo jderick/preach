@@ -242,6 +242,7 @@ class state_set
 
 public:
   // constructors
+  bool full;
   state_set ( unsigned int table_size );
   state_set ( void );
 
@@ -259,6 +260,9 @@ public:
     /* old was_present without checking -sym */
   bool was_present( state *&in, bool, bool );
     /* checking -sym before calling simple_was_present() */
+
+  // is_present is new to support PREACH in CGT mode
+  bool is_present( state *& in );
   
   // get the size of each state entry
 #ifndef VER_PSEUDO

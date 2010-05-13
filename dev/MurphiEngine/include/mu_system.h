@@ -146,6 +146,7 @@ class RuleManager
   // End of Vitaly's additions
 
 public:
+  char* rule_mask;
   RuleManager();
   ~RuleManager();
   state * RandomNextState();
@@ -153,6 +154,7 @@ public:
   bool AllNextStates();
 #ifdef ERLANG
   int AllNextStatesList(char*, char*); // for preach
+  int OneNextState(char*, char*); // for preach
   int NextStatePreach(char* s, char* l,unsigned rule );
   int RuleName( char* l,unsigned rule);
   int whatRuleFired(char*, char*);

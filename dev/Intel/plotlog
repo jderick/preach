@@ -121,7 +121,7 @@ while (<LOG>) {
        $max_time = $max_time < $secs ? $secs : $max_time;
      }
   #} else {
-     if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states received and (\d+) states in the queue .* msgq len = (\d+)/) {
+     if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states received and (\d+) states in the queue .* msgq len = (\d+).*CGT_hcount = (\d+)/) {
      #if (/(\w+\.<\d+\.\d+.\d+>): (\d+) states expanded; (\d+) states in hash table, in (\d+) s .* (\d+) states received and (\d+) states in the queue/) {
        my $node = $1;
        my $estates = $2;
@@ -130,6 +130,7 @@ while (<LOG>) {
        my $recvd = $5;
        my $wq = $6;
        my $msgq = $7;
+       my $cgt_hstates = $8;
        #my $msgq = 0;
        if ($data_files{$node} && $secs) {
           # lame attempt at plotting states recvd per sec rate
@@ -139,7 +140,7 @@ while (<LOG>) {
           #$last_sec{$node} = $secs;
           #$last_sr{$node} = $recvd;
           my $FH = $data_files{$node};
-          print $FH "$secs $wq $hstates $estates $recvd $msgq\n";
+          print $FH "$secs $wq $hstates $estates $recvd $msgq $cgt_hstates\n";
           $ht_max{$node} = $hstates;
        }
      }
@@ -175,6 +176,7 @@ plotit('lines','Expanded States',4,'es');
 plotit('lines','MsgQ Length',6,'mq');
 plotit('histeps','Backoff Mode Nodes',2,'bo');
 plotit('lines','States Recvd',5,'sr');
+plotit('lines','CGT Hash Table',7,'ch');
 
 #print "the following nodes are currently in backoff mode:\n[";
 #foreach my $n (keys %backoff) {
