@@ -8,10 +8,12 @@ WORKQ_FILE = /tmp/workQueue.${USER}
 ERLC_OPTIONS = +native +\{hipe,\[o3\]\} 
 #ERLC_OPTIONS = +debug_info 
 MURPHI_INCLUDE = ${PREACH_ROOT}/MurphiEngine/include
-#ERLANG_INTERFACE_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.2/include
-#ERLANG_INTERFACE_LIBS = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.2/lib
-ERLANG_INTERFACE_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.3/include
-ERLANG_INTERFACE_LIBS = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.3/lib
+# for UBC:
+ERLANG_INTERFACE_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.2/include
+ERLANG_INTERFACE_LIBS = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.2/lib
+
+#ERLANG_INTERFACE_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.3/include
+#ERLANG_INTERFACE_LIBS = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.3/lib
 ERLANG_ERTS_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/usr/include
 MU=${PREACH_ROOT}/MurphiEngine/src/mu
 BEAMS = bitarray.beam bloom.beam murphi_interface.beam diskfilter.beam diskq.beam preach.beam
