@@ -1,6 +1,6 @@
 
 -module(preach).
--export([run/0,startWorker/12,ready/1, doneNotDone/5, load_balancer/3]).
+-export([run/0,startWorker/13,ready/1, doneNotDone/5, load_balancer/3]).
 
 -record(r,
    {tf, % tracefile
@@ -129,12 +129,12 @@ start(P) ->
          end,
          hosts())
     end,
+    murphi_interface:start(rundir(), model_name()),
     Names = initThreads([], P),
     lists:map(fun(X) -> X ! {trace_handler, self()} end, tuple_to_list(Names)),
     lists:map(fun(X) -> X ! {terminator, self()} end, tuple_to_list(Names)),
     LBPid = spawn(?MODULE, load_balancer, [Names,getintarg(lbr,0),idle]),
     lists:map(fun(X) -> X ! {lbPid, LBPid} end, tuple_to_list(Names)),
-    murphi_interface:start(rundir(), model_name()),
     case init:get_argument(nhr) of error -> Nhr = []; {ok,[Nhr]} -> ok end,
     case murphi_interface:has_cangetto() of true -> cgt_mask_nonhelpful_rules(Nhr,true); _ -> ok end,
     Seed = getintarg(seed,0),
@@ -206,13 +206,14 @@ initThreads(Names, NumThreads) ->
     Seed =  getintarg(seed,0),
     HashSize = getintarg(m,mDefault()),
     CgtHashSize = getintarg(cm,1024),
+    DoCgt = murphi_interface:has_cangetto() and (init:get_argument(no_cgt) == error),
     PR = getintarg(pr,5),
     LB = getintarg(lbr,0),
     if Local ->
-            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU,Nhr,Cgthdt],
+            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU,Nhr,Cgthdt,DoCgt],
             ID = spawn(preach,startWorker,Args);
        true ->
-            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU,Nhr,Cgthdt],
+            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU,Nhr,Cgthdt,DoCgt],
             ID = spawnAndCheck(mynode(NumThreads),preach,startWorker,Args),
             link(ID)
     end,
@@ -628,7 +629,7 @@ second({_,X}) -> X.
 %% Returns : ok
 %%     
 %%----------------------------------------------------------------------
-startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU,Nhr,Cgthdt) ->
+startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU,Nhr,Cgthdt,DoCgt) ->
     log("startWorker() entered (model is ~s;UseSym is ~w;CheckDeadlocks is ~w;UseLB is ~w;MSU is ~w)~n", 
          [ModelName,UseSym,CheckDeadlocks,UseLB,MSU],1),
     %crypto:start(),
@@ -646,13 +647,12 @@ startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Prof
     ReQ = initRecycleQueue(),
     TF = initTraceFile(),
     % CGT stuff
-    case (murphi_interface:has_cangetto()) of
-    true ->
+    if DoCgt ->
        murphi_interface:cgt_init_hash(CgtHashSize),
        cgt_mask_nonhelpful_rules(Nhr,false),
        ets:new(steps, [ordered_set, named_table, public]),
        lists:map(fun(D) -> ets:insert(steps,{D,0}) end, lists:seq(0,100));
-    false -> ok end,
+    true -> ok end,
     %% IF YOU WANT BLOOM...
     %%    reach(#r{ss= bloom:bloom(200000000, 0.00000001),
     %% ELSE
@@ -662,7 +662,7 @@ startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Prof
         sent=0, recd=0, extra=0, esent=0, count=0, oqs=0, coq=0, last_sent=0, minwq=0, cgt_hcount=0, hcount=0,bov=initBov(Names), owq=initOtherWQ(Names), 
         wq=WQ, req=ReQ, oq=OQ, tf=TF, 
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
-         lb_pid = LBPid, lb_pending=(not UseLB), nt=NoTrace, has_cgt = murphi_interface:has_cangetto(),
+         lb_pid = LBPid, lb_pending=(not UseLB), nt=NoTrace, has_cgt = DoCgt,
          cgthdt = Cgthdt,
          last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed,msu=MSU })) 
     of
@@ -1054,24 +1054,25 @@ min(X, Y) -> if X > Y -> Y; true -> X end.
 %  cangetthere
 %
 %
-search_CGT(500,StateList) -> {failure,bound_of_500_hit,lists:reverse(StateList)};
+search_CGT(500,StateList) -> 
+  StateListU = lists:usort(StateList),
+  case length(StateListU) < length(StateList) of
+  % Jesse; should really prune StateList down to just the loop part, but too lazy right now
+  true ->  {failure,loop,lists:reverse(StateList)};   
+  false -> {failure,bound_of_500_hit,lists:reverse(StateList)}
+  end;
 search_CGT(N,StateList) ->
    Head = hd(StateList),
-%   log("CGT: search_CGT entered (~w)~n",[N]),
    case (murphi_interface:cgt_hash_query(Head) orelse murphi_interface:is_q_state(Head)) of
    true -> 
-       log("CGT: returning can_get_there (~w)~n",[N],5),
+% JESSE: this list reversal is not necessary, but removing it requires some
+% tweaks in check_CGT(), which I"m too lazy to do right now
        {can_get_there,N,lists:reverse(tl(StateList))};
    false ->
-      Succ = murphi_interface:cgt_successor(Head),
-      case Succ of 
+      case murphi_interface:cgt_successor(Head) of
       null -> {failure,deadlock,lists:reverse(StateList)}; 
       {error,_,_} -> {failure,error,lists:reverse(StateList)}; 
-      _ -> 
-         case (lists:member(Succ,StateList)) of 
-         true -> {failure,loop,lists:reverse(lists:append([Succ],StateList))}; 
-         false -> search_CGT(N+1,lists:append([Succ],StateList))
-         end
+      Succ -> search_CGT(N+1,lists:append([Succ],StateList))
       end
    end.
 search_CGT(State) -> search_CGT(0,[State]).

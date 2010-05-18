@@ -236,7 +236,9 @@ Here are the CGT related flags Preach takes
 
    Allocate j Megabytes for the CGT hash table. Default is 1024.
 
+-no_cgt
 
+   Don't check the CGT property even if there is one in the model.
 
 Utilities.................................................................
 
