@@ -126,7 +126,7 @@ static ErlDrvData example_drv_start(ErlDrvPort port, char *buff)
 #ifdef PASS_THIS_MANY_STATES
     d->size = RULES_IN_WORLD * BLOCKS_IN_WORLD * PASS_THIS_MANY_STATES; 
 #else
-    d->size = RULES_IN_WORLD * BLOCKS_IN_WORLD; 
+    d->size = RULES_IN_WORLD * (BLOCKS_IN_WORLD + 10) +100;  // JESSE: the +10 and +100 are just guesses, but they were John's guesses so they must be right.
 #endif
     d->state_buffer = new char[d->size];
     //preachlog = fopen("/netbatch/jdbingha.preachlog","w");
