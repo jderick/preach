@@ -195,7 +195,7 @@ initThreads(Names, 0) ->
 initThreads(Names, NumThreads) ->
     Local = is_localMode(),
     UseSym = init:get_argument(nosym) == error,
-    MSU = init:get_argument(msu) == error,
+    MSU = init:get_argument(msu) =/= error,
     CheckDeadlocks = init:get_argument(ndl) == error,
     case init:get_argument(nhr) of
     error -> Nhr = [];
