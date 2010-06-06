@@ -735,9 +735,8 @@ check_invariants(State, _=#r{th=TraceH, tf=TF, names=Names, usesym=UseSym, seed=
 
 expand_a_state(State, R=#r{count=Count,oq=OutQ, tf=TF, th=TraceH, names=Names, usesym=UseSym, 
                            seed=Seed, oqs=OQSize,msu=MSU, checkdeadlocks=CheckDeadlocks}) ->
-   NewStates = if (MSU) -> lists:usort(transition(State));
-               true ->     transition(State) end,
-   case NewStates of 
+   TransitionResult = transition(State),
+   case TransitionResult of 
    {error,ErrorMsg,RuleNum}  ->
       log("Murphi Engine threw an error evaluating rule \"~s\" (likely an assertion in the Murphi model failed):~n~s",
           [murphi_interface:rulenumToName(RuleNum),ErrorMsg]),
@@ -746,6 +745,7 @@ expand_a_state(State, R=#r{count=Count,oq=OutQ, tf=TF, th=TraceH, names=Names, u
       TraceH ! {error_found, [State]},
       traceMode(Names, TF, TraceH, UseSym, Seed);
    _ ->
+      NewStates = if (MSU) -> lists:usort(TransitionResult); true -> TransitionResult end,
       if (CheckDeadlocks andalso NewStates == []) ->
          log("Found (global) deadlock state.",[]),
          log("Just in case cex construction fails, here it is:",[]),
