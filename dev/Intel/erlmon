@@ -31,7 +31,7 @@ scp "${PREACH_MACHINE}:${LOGDIR}/diskmon" $WORKDIR
 cd $WORKDIR
 export ERL_EPMD_PORT=$EPMD
 export ERL_FULLSWEEP_AFTER=0
-nohup ${ERLANG_PREFIX}/bin/erl -pa $WORKDIR +A 10 -sname ${PREACH_NODE_NAME} -detached
+nohup ${ERLANG_PREFIX}/bin/erl -pa $WORKDIR +A 10 -kernel net_ticktime 300 -sname ${PREACH_NODE_NAME} -detached
 
 nohup $WORKDIR/diskmon >& $LOGDIR/`hostname`.usage 
 
