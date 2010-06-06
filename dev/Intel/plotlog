@@ -174,7 +174,7 @@ plotit('lines','Work Queue States',2,'wq');
 plotit('lines','Hash Table States',3,'ht');
 plotit('lines','Expanded States',4,'es');
 plotit('lines','MsgQ Length',6,'mq');
-plotit('histeps','Backoff Mode Nodes',2,'bo');
+#plotit('histeps','Backoff Mode Nodes',2,'bo');
 plotit('lines','States Recvd',5,'sr');
 plotit('lines','CGT Hash Table',7,'ch');
 
