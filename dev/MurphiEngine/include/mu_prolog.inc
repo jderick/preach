@@ -71,7 +71,6 @@
 #include <stdio.h>
 #include "erl_driver.h"
 
-
 /*  Define this macro for pre 2.x G++ versions.
     It controls whether delete has a size argument,
     which is required by old g++ and generates a

@@ -184,7 +184,7 @@ public:
   // destructor
   virtual ~state_stack()
   {
-    delete[ OLD_GPP(max_active_states) ] nextrule_to_try; // Should be delete[].
+    delete[] nextrule_to_try; // Should be delete[].
   };
 
   virtual void print_capacity( void )

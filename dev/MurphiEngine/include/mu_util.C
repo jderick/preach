@@ -318,7 +318,7 @@ double SecondsSinceStart( void ) {
 /****************************************
   class setofrules
   ****************************************/
-
+/*
 setofrules interset(setofrules rs1, setofrules rs2)
 {
   setofrules retval;
@@ -352,7 +352,7 @@ bool subset(setofrules rs1, setofrules rs2)
       return FALSE;
   return TRUE;
 }  
-
+*/
 
 /***************************   // added by Uli
   random number generator
