@@ -53,6 +53,8 @@
  *
  */ 
 
+class state;
+
 class hash_function
 {
 public:

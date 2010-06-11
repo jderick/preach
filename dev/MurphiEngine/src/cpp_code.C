@@ -257,7 +257,9 @@ char *enumtypedecl::generate_decl()
         "    else\n"
         "      cout << name << \":Undefined\\n\";\n"
         "  };\n"
-        "  virtual operator string()\n"
+        "  virtual operator string();\n"
+        "};\n\n"
+        "  %s::operator string()\n"
         "  {\n"
 	"    stringstream cout (stringstream::out);\n"
         "    if (defined())\n"
@@ -265,12 +267,12 @@ char *enumtypedecl::generate_decl()
         "    else\n"
         "      cout << name << \":Undefined\\n\";\n"
         "    return cout.str();\n"
-        "  };\n"
-        "};\n\n"
+        "  }\n"
         "char *%s::values[] = {",
         left, /* print() */
+            mu_name,
 	left,
-        mu_name);  /* for values array near the end */
+            mu_name);  /* for values array near the end */
     
     make_enum_idvalues( idvalues, this);
     // Dill: an extra NULL in case the enum has only one element.
@@ -1544,16 +1546,8 @@ char *scalarsettypedecl::generate_decl()
            "      else cout << name << \":Undefined\\n\";\n"
            "    };\n",left);
        fprintf(codefile, 
-	   "  virtual operator string()\n"
-           "    {\n"
-	"    stringstream cout (stringstream::out);\n"	       		  		  
-           "      if (defined()) cout << name << ':' << values[ value() - %d] << '\\n';\n"
-           "      else cout << name << \":Undefined\\n\";\n"
-	   " return cout.str();"
-           "    };\n",
-           //left,
-           //left,
-           left);  /* lower bound for values array reference */
+               "  virtual operator string();\n");
+
 
         fprintf(codefile, 
            "  void print_statistic() {};\n"
@@ -1579,6 +1573,16 @@ char *scalarsettypedecl::generate_decl()
        /* end class definition */
        fprintf(codefile,"};\n");
        
+       fprintf(codefile, "%s::operator string()\n"
+           "    {\n"
+	"    stringstream cout (stringstream::out);\n"	       		  		  
+           "      if (defined()) cout << name << ':' << values[ value() - %d] << '\\n';\n"
+           "      else cout << name << \":Undefined\\n\";\n"
+	   " return cout.str();"
+           "    };\n",
+               mu_name,
+               left);  /* lower bound for values array reference */
+
        /* create the values array. */
        fprintf(codefile,
           "char *%s::values[] =\n"
@@ -1880,13 +1884,8 @@ char *uniontypedecl::generate_decl()
           "values[ indexvalue() ] << '\\n';\n"
           "      else cout << name << \":Undefined\\n\";\n"
           "    };\n"
-          "  virtual operator string()\n"
-          "    {\n"
-	"    stringstream cout (stringstream::out);\n"	       		  	      
-          "      if (defined()) cout << name << ':' << "
-          "values[ indexvalue() ] << '\\n';\n"
-          "      else cout << name << \":Undefined\\n\";\n"
-          "    return cout.str();};\n"
+          "  virtual operator string();\n"
+
 	      );
       fprintf(codefile, 
           "  void print_statistic() {};\n"
@@ -1895,6 +1894,14 @@ char *uniontypedecl::generate_decl()
       
       /* end class definition */
       fprintf(codefile,"};\n");
+
+      fprintf(codefile, "%s::operator string()\n"
+          "    {\n"
+	"    stringstream cout (stringstream::out);\n"	       		  	      
+          "      if (defined()) cout << name << ':' << "
+          "values[ indexvalue() ] << '\\n';\n"
+          "      else cout << name << \":Undefined\\n\";\n"
+          "    return cout.str();};\n", mu_name);
       
       /* create the values array. */
       fprintf(codefile,"char *%s::values[] = {", mu_name);

@@ -63,7 +63,6 @@
   class for pointer to previous state
   ****************************************/
 
-class state;
 
 class StatePtr
 {

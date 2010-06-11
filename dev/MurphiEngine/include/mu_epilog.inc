@@ -85,7 +85,9 @@
 /****************************************
   main routines
   ****************************************/
+#ifndef NOMAIN
 #include "mu_verifier.C"
+#endif
 
 #include <iostream>
 #include <sstream>
@@ -168,16 +170,16 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
         workingstate->bits = (unsigned char*)(buff+1);
 #endif
         state* sPtr = workingstate;
-		if ( d->brad_hash->simple_was_present(sPtr,true,true)) {
-            if (Error.NoError())   {
-		      driver_output(d->port, d->erlang_true, 8);
-            } else {
-              int i = 0;
-              ei_encode_version(d->state_buffer, &i);
-	          ei_encode_string(d->state_buffer, &i, Error.Msg());
-              driver_output(d->port, d->state_buffer, i);
-            }
-	    } else {
+        if ( d->brad_hash->simple_was_present(sPtr,true,true)) {
+          if (Error.NoError())   {
+            driver_output(d->port, d->erlang_true, 8);
+          } else {
+            int i = 0;
+            ei_encode_version(d->state_buffer, &i);
+            ei_encode_string(d->state_buffer, &i, Error.Msg());
+            driver_output(d->port, d->state_buffer, i);
+          }
+        } else {
             if (Error.NoError())   {
 		      driver_output(d->port, d->erlang_false, 9);
             } else {
@@ -439,7 +441,6 @@ DRIVER_INIT(PROTOCOL_NAME) /* must match name in driver_entry */
 }
 
 } /* end preach related crud */
-
 
 
 
