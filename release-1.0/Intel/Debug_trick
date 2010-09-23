@@ -1,7 +1,0 @@
-if a preach node hangs, here's one way to debug.  Make sure you compile without +native.  Now run the job, and find the name of the PID node@host that hangs.  Then run
-
-erl -sname foo
-
-and from ther erlang shell do
-
-rpc:call(node@host, shell_default, i, [])

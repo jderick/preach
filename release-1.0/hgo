@@ -1,1 +1,0 @@
-erl  -rsh ssh -sname foo -pa $PREACH_ROOT  -run preach run -model $*
