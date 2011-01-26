@@ -9,6 +9,8 @@
 #
 #  Also, adding the flag -d will make it *only* print the diffs,
 #  just like Murphi's -td flag.
+#  Also, the ith Rule name in the error trace is prefixed with the 
+#  number i in the output.
 #
 
 my $diff_only = (shift eq '-d');
@@ -17,6 +19,7 @@ my $fsm = $pre_trace;
 my @state_vars;
 my %old_state;
 my %new_state;
+my $rule_counter = 0;
 while (<>) {
   if ($fsm == $pre_trace) {
     if (/Found \(global\) deadlock/) { print; $fsm = $pre_start_state;}
@@ -42,8 +45,11 @@ while (<>) {
       $fsm = $white_space;
     }
   } elsif ($fsm == $white_space) {
+    if (/^Rule/) {
+       $fsm = $next_state; 
+       print ++$rule_count.' ';
+    }
     print;
-    $fsm = $next_state if /^Rule/;
     $fsm = $next_state if /Here's the CGT suffix/;
   } else { # $fsm == $next_state
     if (/^(.*):(.*)$/) {

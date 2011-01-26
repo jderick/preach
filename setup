@@ -1,9 +1,9 @@
 # YOU MUST CONFIGURE THESE VARS PRIOR TO RUNNING
 # Copy this file to ~/.preach_setup and source it from your ~/.cshrc.$USER file
 
-setenv PREACH_ROOT /path/to/preach/files
+setenv PREACH_ROOT /nfs/site/disks/ltdn_lrb_disk674/lrb2/work/valfc19/jdbingha/preach
 setenv PREACH_SSH "ssh"
-setenv PREACH_TEMP /tmp
+setenv PREACH_TEMP /netbatch
 
 # This is where Erlang is installed.  This corresponds to the
 # --prefix argument when running ./configure 
