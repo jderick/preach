@@ -1,3 +1,3 @@
 ln -f -s ../Makefile Makefile
 make n_peterson.so
-lgo n_peterson -pr 1000
+lgo n_peterson -pr 5
