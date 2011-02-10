@@ -41,7 +41,7 @@
 --------------------------------------------------------------------------
 
 Const
-  N: 13;	
+  N: 6;	
 
 Type
   --  The scalarset is used for symmetry, which is implemented in Murphi 1.5
