@@ -188,8 +188,6 @@ public:
   char * LastInvariantName();
 };
 
-  uint32_t SuperFastHash (const char * data, int len);
-
 /************************************************************/
 class SymmetryManager
 {
