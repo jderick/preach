@@ -49,12 +49,11 @@ VERIFICATION SUCCESSFUL:
 
 Running Preach...............................................................
 
-now cd into whatever directory you want to run preach in, which we'll assume 
-contains the murphi source file blah.m (we also assume that this directory
-is not the same as $PREACH_ROOT) .  Next do
+Now cd into whatever directory you want to run preach in, which we'll assume 
+contains the murphi source file blah.m .  One can find plenty of example
+Murphi models under examples/. Next do 
 
-> ln -f -s $PREACH_ROOT/Makefile Makefile
-> make blah.so
+> make -f $PREACH_ROOT/Makefile blah.so
 
 This should create the blah.so file.  To invoke preach in local mode, do
 
