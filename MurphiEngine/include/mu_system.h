@@ -159,6 +159,7 @@ public:
   int RuleName( char* l,unsigned rule);
   int whatRuleFired(char*, char*);
   unsigned whatRule() {return what_rule;};
+  string rules_information();
 #endif
   void ResetRuleNum();
   void SetRuleNum(unsigned r);

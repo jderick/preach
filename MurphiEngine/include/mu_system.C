@@ -820,6 +820,23 @@ unsigned int RuleManager::NumRulesFired()
   return rules_fired;
 }
 
+string
+RuleManager::rules_information()
+{
+    string str;
+    char buf[64];
+    str.append("Rules Information:\n\n");
+    for (int i=0; i<RULES_IN_WORLD; i++)   {
+	   str.append("\tFired ");
+       sprintf(buf,"%d",NumTimesFired[i]);
+       str.append(buf);
+       str.append(" times\t- Rule \"");
+	   str.append(generator->Name(i));
+	   str.append("\"\n");
+	}
+    return(str);
+}
+  
 void 
 RuleManager::print_rules_information()
 {

@@ -178,6 +178,9 @@ Preach Command Line Arguments...................................................
             reason have alot of different rules that often produce
             the same next state)
 
+-pri        Print Rule Info.  Prints the number of times each rule was fired.
+            Currently only works in localmode.  This flag is called -pr in 
+            Murphi.
 
 Can Get To feature (experimental).........................................
 
