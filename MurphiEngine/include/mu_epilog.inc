@@ -393,6 +393,11 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
 		      driver_output(d->port, d->erlang_false, 9);
 		   }
         }
+   } else if (fn == 27) {
+      int i =0;
+      ei_encode_version(d->state_buffer, &i);
+      ei_encode_string(d->state_buffer, &i,Rules->rules_information().c_str());
+      driver_output(d->port, d->state_buffer, i);
    } else if (fn == 26) {
 		memcpy(workingstate->bits, (buff+1), BLOCKS_IN_WORLD);
         state* sPtr = workingstate;

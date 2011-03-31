@@ -1,6 +1,6 @@
 
 -module(preach).
--export([run/0,startWorker/13,ready/1, doneNotDone/5, load_balancer/3]).
+-export([run/0,startWorker/14,ready/1, doneNotDone/5, load_balancer/3]).
 
 -record(r,
    {tf, % tracefile
@@ -209,11 +209,12 @@ initThreads(Names, NumThreads) ->
     DoCgt = murphi_interface:has_cangetto() and (init:get_argument(no_cgt) == error),
     PR = getintarg(pr,5),
     LB = getintarg(lbr,0),
+    PRI = init:get_argument(pri) /= error,
     if Local ->
-            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU,Nhr,Cgthdt,DoCgt],
+            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU,Nhr,Cgthdt,DoCgt,PRI],
             ID = spawn(preach,startWorker,Args);
        true ->
-            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU,Nhr,Cgthdt,DoCgt],
+            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU,Nhr,Cgthdt,DoCgt,false],
             ID = spawnAndCheck(mynode(NumThreads),preach,startWorker,Args),
             link(ID)
     end,
@@ -629,7 +630,7 @@ second({_,X}) -> X.
 %% Returns : ok
 %%     
 %%----------------------------------------------------------------------
-startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU,Nhr,Cgthdt,DoCgt) ->
+startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU,Nhr,Cgthdt,DoCgt,PrintRulesInfo) ->
     log("startWorker() entered (model is ~s;UseSym is ~w;CheckDeadlocks is ~w;UseLB is ~w;MSU is ~w)~n", 
          [ModelName,UseSym,CheckDeadlocks,UseLB,MSU],1),
     %crypto:start(),
@@ -671,6 +672,7 @@ startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Prof
     end,
     %%murphi_interface:stop(),
     OmissionProb =  1.0 - murphi_interface:probNoOmission(),
+    if PrintRulesInfo -> log(murphi_interface:rules_info()); true -> ok end,
     log("Worker is done; Pr[even one omitted state] <= ~w; No. of hash collisions = ~w",
         [OmissionProb,murphi_interface:numberOfHashCollisions()],1),
     ok.
