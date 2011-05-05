@@ -182,6 +182,10 @@ Preach Command Line Arguments...................................................
             Currently only works in localmode.  This flag is called -pr in 
             Murphi.
 
+-pas        Print All States.  Prints every state visitted during model check.
+            Of course this will cause a butt-load of output for non-small
+            models.
+
 Can Get To feature (experimental).........................................
 
 Preach currently handles CTL properties of the form AGEFq, where q is a 
