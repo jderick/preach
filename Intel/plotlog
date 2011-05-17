@@ -5,9 +5,9 @@
 # file is still in flux) or after preach completion.
 # 
 # usage:
-# plot mymodel.log <args>
+# plotlog mymodel.log <args>
 #
-# this will create four eps files, each being a plot
+# this will create several eps files, each being a plot
 # with x-axis being time (seconds) and y-axis as follows:
 #
 #  * wq_plot.eps : y-axis is size of work queue in states
