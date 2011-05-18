@@ -78,14 +78,27 @@ n3@machine2
 n4@machine2
 
 Here machine1 and machine2 are placeholders for real machine domain names, 
-while n1, n2,.. should literally appear in the host file when multiple compute
-nodes are to be run on the same host.
+while n1, n2,.. are identifiers you are free to make up, with the only
+restriction that they must be unique for the same machine (i.e. no
+too lines of the host file should be the same).
 
-Next, login to the hosts in this file to make sure you can ssh uninteractively
+To make sure you can ssh without a password prompt and also that
+that the erlang virtual machine is automatically in your
+path when ssh'ing to each <host>, try:
+
+> ssh <host> erl -run init stop
+
+Success here looks like:
+Eshell V5.7.3  (abort with ^G)
+1>
+(and then you are returned to your local unix shell)
+Note that we've had PReach users get bitten by this problem, so it is worth 
+double checking for a few of your hosts.
 
 Then run 
 
-erl  -rsh ssh -sname foo -pa $PREACH_ROOT  -run preach run -model blah
+erl  -rsh ssh -sname root_worker -pa $PREACH_ROOT  -run preach run -model blah
+
 
 Running with Netbatch inside Intel.............................................
 
