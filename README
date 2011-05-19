@@ -128,6 +128,10 @@ You need to use -- to do this
 
 Caveats........................................................................
 
+* There is a bug that manifests on 32 bit machines if you use a hash table of 
+  more than about 500MB; Preach will not work.  Unfortunately the default
+  is 1G.
+
 * Preach (or perhaps Erlang) has an outstanding bug where occasionally it will
   die immediately after being launched with the following message:
 
