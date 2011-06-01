@@ -142,6 +142,7 @@ while (<LOG>) {
           my $FH = $data_files{$node};
           print $FH "$secs $wq $hstates $estates $recvd $msgq $cgt_hstates\n";
           $ht_max{$node} = $hstates;
+          #$ht_max{$node} = $secs;
        }
      }
   #}
@@ -153,6 +154,7 @@ $total_ht_states = 0;
 foreach my $h (@nodes) {
   close($data_files{$h});
   $total_ht_states += $ht_max{$h};
+  print "$h:  $ht_max{$h}\n";
 }
 print BO_DATA "$max_time $bo_count\n";
 close BO_DATA;
