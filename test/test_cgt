@@ -1,0 +1,14 @@
+#
+#  A test to see if all reachable states of german's protocol
+#  can get to a state wherein all channels are empty and the
+#  directory is not processing a command (CurCmd = Empty).
+#  See the CGT property at the bottom of german.m for 
+#  how this is expressed in our clunky syntax.  Also,
+#  note the specification of the non-helpful rules to lgo
+#  below via -nhr.  also note the use of -cm, which specifies
+#  the size of the CGT hash table (which is distinct from
+#  the reachable states hash table)
+#
+ln -f -s ../Makefile Makefile
+make german.so
+lgo german -pr 5 -m 100 -cm 100 -nhr SendReq Store 

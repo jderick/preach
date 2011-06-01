@@ -231,6 +231,8 @@ the failed CGT suffix) is printed.  CGT suffix failure can happen for 3 reasons
 2. A deadlock occurs, in the sense that a state is reached where no helpful
    rule is enabled
 3. The CGT suffix grows to length 500
+
+There is a test that demos the can-get-to feature, see test/test_cgt.
 Here are the CGT related flags Preach takes
 
 -nhr r1 r2 ... rk 
