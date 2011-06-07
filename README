@@ -128,6 +128,11 @@ You need to use -- to do this
 
 Caveats........................................................................
 
+* Specifying a command line arg multiple times currently causes Preach to 
+  use the default value; this should be fixed at some point.  but beware
+  when you are calling preach via layers of scripts that each arg
+  should only be mentioned (at most) once!
+
 * There is a bug that manifests on 32 bit machines if you use a hash table of 
   more than about 500MB; Preach will not work.  Unfortunately the default
   is 1G.
