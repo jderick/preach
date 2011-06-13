@@ -41,7 +41,7 @@
              % to this value get stored in the CGT hash table.
 	bo_stats, % 2-tuple {BackoffCount, NumRecycledStates} to report as statistics
 	seed,     % seed for owner hashing
-    pas % command-line option (print all states)
+    psr % command-line option (print states rate)
    }).
 
 
@@ -198,7 +198,7 @@ initThreads(Names, NumThreads) ->
     UseSym = init:get_argument(nosym) == error,
     MSU = init:get_argument(msu) =/= error,
     CheckDeadlocks = init:get_argument(ndl) == error,
-    PAS = init:get_argument(pas) =/= error,
+    PSR = getintarg(psr,0),
     case init:get_argument(nhr) of
     error -> Nhr = [];
     {ok,[Nhr]} -> ok
@@ -213,10 +213,10 @@ initThreads(Names, NumThreads) ->
     LB = getintarg(lbr,0),
     PRI = init:get_argument(pri) /= error,
     if Local ->
-            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU,Nhr,Cgthdt,DoCgt,PRI,PAS],
+            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU,Nhr,Cgthdt,DoCgt,PRI,PSR],
             ID = spawn(preach,startWorker,Args);
        true ->
-            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU,Nhr,Cgthdt,DoCgt,false,PAS],
+            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU,Nhr,Cgthdt,DoCgt,false,PSR],
             ID = spawnAndCheck(mynode(NumThreads),preach,startWorker,Args),
             link(ID)
     end,
@@ -609,6 +609,12 @@ printState(MS) ->
     Str = murphi_interface:stateToString(MS),
     io:format("~s~n", [Str]).
 
+printStates(_,_,[]) -> ok;
+printStates(PSR,Count,[State | StateListTl]) ->
+   if ((Count rem PSR) == 0) -> printState(State); true -> ok end,
+   printStates(PSR,Count+1,StateListTl)
+.
+
 transition(MS) ->
     murphi_interface:nextstates(MS).
 
@@ -632,7 +638,7 @@ second({_,X}) -> X.
 %% Returns : ok
 %%     
 %%----------------------------------------------------------------------
-startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU,Nhr,Cgthdt,DoCgt,PrintRulesInfo,PAS) ->
+startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU,Nhr,Cgthdt,DoCgt,PrintRulesInfo,PSR) ->
     log("startWorker() entered (model is ~s;UseSym is ~w;CheckDeadlocks is ~w;UseLB is ~w;MSU is ~w)~n", 
          [ModelName,UseSym,CheckDeadlocks,UseLB,MSU],1),
     %crypto:start(),
@@ -667,7 +673,7 @@ startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Prof
         t0=1000000 * element(1,now()) + element(2,now()), usesym=UseSym, checkdeadlocks=CheckDeadlocks,
          lb_pid = LBPid, lb_pending=(not UseLB), nt=NoTrace, has_cgt = DoCgt,
          cgthdt = Cgthdt,
-         last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed,msu=MSU,pas=PAS })) 
+         last_profiling_time=0,profiling_rate = Profiling_rate, bo_stats = {0,0,0},seed= Seed,msu=MSU,psr=PSR })) 
     of
     {'EXIT',R} -> log("EXCEPTION ~w",[R]);
     _ -> ok
@@ -814,7 +820,7 @@ secondsSince(T0) ->
 recvStates(R0=#r{sent=NumSent, recd=NumRecd, hcount=Hcount, wq=WorkQ, tf=TF, t0=T0,
 		 th=TraceH, names=Names, term=Terminator, bov=Bov, usesym=UseSym, seed=Seed,
 		 lb_pid=LBPid, lb_pending=LB_pending, bo_stats=BoStats,
-                oqs=OQSize, minwq=MinWQ, nt=NoTrace, extra=Extra,pas=PAS }) ->
+                oqs=OQSize, minwq=MinWQ, nt=NoTrace, extra=Extra,psr=PSR }) ->
     R = profiling(R0),
     WQSize = count(WorkQ),
     Runtime = secondsSince(T0),
@@ -841,14 +847,15 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, hcount=Hcount, wq=WorkQ, tf=TF, t0=
                                end,
 			       Test = murphi_interface:brad_hash(State),
 			       if Test == false -> % State not present
-                       if PAS -> printState(State); true -> nop end,
+                       HcountNew = Hcount + 1,
+                       if (PSR > 0 andalso ((HcountNew rem PSR) == 0)) -> printState(State); true -> nop end,
 				       Q2 = enqueue(WorkQ,State),
                                        if NoTrace ->
                                                TF2 = TF;
                                           true ->
                                                TF2 = diskq:enqueue(TF, {State, Prev})
                                        end,
-				       recvStates(R#r{recd=NumRecd+1, wq=Q2, tf=TF2, hcount=(Hcount+1)});
+				       recvStates(R#r{recd=NumRecd+1, wq=Q2, tf=TF2, hcount=HcountNew});
 				  true -> 
 				       recvStates(R#r{recd=NumRecd+1})
 			       end;
@@ -884,14 +891,15 @@ recvStates(R0=#r{sent=NumSent, recd=NumRecd, hcount=Hcount, wq=WorkQ, tf=TF, t0=
                                                  fun({X,_}) -> murphi_interface:brad_hash(X) == false end,
                                                  StateList),
                                NewStates = lists:map(fun({X,_}) -> X end, NewStatePairs),
-                               if PAS -> lists:map(fun printState/1, NewStates); true -> nop end,
+                               if (PSR > 0) -> printStates(PSR,Hcount+1,NewStates); true -> nop end,
                                Q2 = enqueueMany(WorkQ, NewStates),
                                if NoTrace ->
                                        TF2 = TF;
                                   true ->
                                        TF2 = enqueueMany(TF, NewStatePairs)
                                end,
-                               recvStates(R#r{recd=NumRecd+Count, wq=Q2, tf=TF2, minwq=min(OtherWQSize, MinWQ), hcount=(Hcount+length(NewStates))});
+                               recvStates(R#r{recd=NumRecd+Count, wq=Q2, tf=TF2, minwq=min(OtherWQSize, MinWQ), 
+                                              hcount=(Hcount+length(NewStates))});
                            {Count, StateList, Pid, extraStateList} ->
                                case Pid of
                                    none -> nop;

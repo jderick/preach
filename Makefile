@@ -41,7 +41,8 @@ preach.beam: preach.erl
 	erlc $(ERLC_OPTIONS) $<
 
 # choice of compiler (with REQUIRED options)
-GCC=g++   # -O3 core dumps occasionally
+#GCC=g++   # -O3 core dumps occasionally
+GCC = /usr/intel/pkgs/gcc/4.5.0/bin/g++
 OFLAGS=-O2
 
 # options (really OPTIONAL)
@@ -66,7 +67,7 @@ CFLAGS=-Wno-deprecated -DCATCH_DIV
 	${MU} -c -b $<
 
 %.so: %.C ${PREACH_ROOT}/MurphiEngine/include/*
-	g++ -O2 -DERLANG -DCATCH_DIV -Wno-write-strings -Wno-deprecated -g -lm  -o $@ -fpic -shared $<  \
+	$(GCC) -O2 -DERLANG -DCATCH_DIV -Wno-write-strings -Wno-deprecated -g -lm  -o $@ -fpic -shared $<  \
 	-I${MURPHI_INCLUDE} \
 	-I${ERLANG_INTERFACE_INCLUDE} \
 	-I${ERLANG_ERTS_INCLUDE} \
