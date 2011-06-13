@@ -88,6 +88,7 @@ my %data_files;
 my %last_sec;
 my %last_sr;
 my %ht_max;
+my %secs_max;
 foreach my $h (@nodes) {
   my $temp = "$h.gnuplot.data";
   open($data_files{$h},">$temp")  || die "could not open $temp";
@@ -142,7 +143,7 @@ while (<LOG>) {
           my $FH = $data_files{$node};
           print $FH "$secs $wq $hstates $estates $recvd $msgq $cgt_hstates\n";
           $ht_max{$node} = $hstates;
-          #$ht_max{$node} = $secs;
+          $secs_max{$node} = $secs;
        }
      }
   #}
@@ -154,7 +155,7 @@ $total_ht_states = 0;
 foreach my $h (@nodes) {
   close($data_files{$h});
   $total_ht_states += $ht_max{$h};
-  print "$h:  $ht_max{$h}\n";
+  print "$h:\t$ht_max{$h}\t$secs_max{$h}\n";
 }
 print BO_DATA "$max_time $bo_count\n";
 close BO_DATA;
