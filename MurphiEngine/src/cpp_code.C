@@ -1860,6 +1860,7 @@ char *uniontypedecl::generate_decl()
           "  char * Name() { return values[ indexvalue() ]; };\n"
           );
 
+#ifdef DONT_USE_NORRIS_FIX
       fprintf(codefile, 
           "friend int CompareWeight(%s& a, %s& b)\n"
           "{\n"
@@ -1872,6 +1873,82 @@ char *uniontypedecl::generate_decl()
           "}\n",
           mu_name, mu_name
           );
+//
+// The following is a bug fix.  The bug was first noticed running the Preach model checker,
+// which inheritted much of the murphi code base.  The bug manifests as a failure in 
+// symmetry reduction where canonicalization returns a non-symmetric state.  It affects
+// models that have unions over enums.  Thanks to Norris Ip for help fixing this.
+// Note also that Norris has pointed out: 
+// "To make it faster, you would want to store a simple array within the
+// resulting union type class, so that you can just do "int a_scalarset_idx =
+// s_scalarset_idx[a.value()]". The variable s_scalarset_idx should be a
+// static array within the class, mapping integer to integer."
+// I don't have time to implement this optimization right now
+// Jesse Bingham Oct 5 2011.
+//
+//
+#else
+      fprintf(codefile, 
+          "friend int CompareWeight(%s& a, %s& b)\n"
+          "{\n"
+          "  if (!a.defined() && b.defined()) return(-1);\n"
+          "  if (a.defined() && !b.defined()) return(1);\n",
+          mu_name, mu_name
+          );
+
+      // produce code that assigns a scalarset index to each of a and b;
+      // the final value of these indices will be -1 to indicate that the
+      // value is *not* in a scalaret, or it will be i (starting at 0)
+      // to indicate it is in the ith scalarset of the union.
+      int scalarset_idx = 0;
+      fprintf(codefile, "  int a_scalarset_idx = -1;\n");
+      fprintf(codefile, "  int b_scalarset_idx = -1;\n");
+      for ( stelist *unionmember = unionmembers; 
+            unionmember != NULL;
+            unionmember = unionmember->next )  {
+        typedecl *t= (typedecl *) unionmember->s->getvalue();
+        if (t->gettypeclass() == typedecl::Scalarset) {
+          fprintf(codefile,
+          "  if (%d <= a.value() && a.value() <= %d) a_scalarset_idx = %d;\n"
+          "  if (%d <= b.value() && b.value() <= %d) b_scalarset_idx = %d;\n",
+          t->getleft(),
+          t->getright(),
+          scalarset_idx,
+          t->getleft(),
+          t->getright(),
+          scalarset_idx
+          );
+          scalarset_idx++;
+        }
+     }
+
+     // Now, assuming there are actually scalarsets involved in this union, produce
+     // code that deals with all the cases of at least one of a or b being in a scalarset
+     if (scalarset_idx > 0)
+        fprintf(codefile,
+        "  // If (a/b have values within the same scalarset) return 0;\n"
+        "  if ((a_scalarset_idx != -1) && (b_scalarset_idx == a_scalarset_idx)) return(0);\n"
+        "  // If (a has value within a scalarset but not b) return -1;\n"
+        "  if ((a_scalarset_idx != -1) && (b_scalarset_idx == -1)) return(-1);\n"
+        "  // If (b has value within a scalarset but not a) return  1;\n"
+        "  if ((a_scalarset_idx == -1) && (b_scalarset_idx != -1)) return( 1);\n"
+        "  // If (a/b have values within scalarsets but not the same one) pick union\n"
+        "  //    ordering of the two scalarsets and return -1 or 1;\n"
+        "  if (a_scalarset_idx != b_scalarset_idx) return((a_scalarset_idx < b_scalarset_idx) ? -1 : 1);\n"
+     );
+     // handle the cases of both a and b being in enums (which must be true at this point)
+     fprintf(codefile,
+     "  // If (a/b has same values within the same enum) return 0;\n"
+     "  // If (a > b and both are in same enum) return 1;\n"
+     "  // If (a < b and both are in same enum) return -1;\n"
+     "  //  a/b are in two different enums in the union...\n"
+     "  //   Depending on the representations, determine whether to return -1/1.\n"
+     "  if (a.value()==b.value()) return 0;\n"
+     "  else if (a.value()>b.value()) return 1;\n"
+     "  else return -1;\n"
+     "  }\n"
+     );
+#endif
       
       /* declare permute() */
       theprog->symmetry.generate_symmetry_function_decl();
