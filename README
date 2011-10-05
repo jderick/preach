@@ -7,6 +7,14 @@ the University of British Columbia.
 Jesse Bingham jesse.d.bingham@intel.com
 John Erickson john.erickson@intel.com
 
+1.  Setup & Compiling Preach
+2.  Running Preach
+3.  Caveats
+4.  Preach Command Line Arguments
+5.  Can Get To feature (experimental)
+6.  Utilities
+7.  Contacts & Acknowledgements
+
 
 
 Setup & Compiling Preach.............................................................
@@ -46,6 +54,7 @@ near the bottom of the output:
 VERIFICATION SUCCESSFUL:
 	Total of 35159 states visited (this only accurate if no error or in localmode)
 ...
+
 
 Running Preach...............................................................
 
@@ -127,6 +136,16 @@ You need to use -- to do this
 
 
 Caveats........................................................................
+
+* We have observed many issues that are best described as issues inheritted
+  from the Murphi Front end and/or Murphi language defficiencies.  There are
+  two classes. 
+  - calling a function from an invariant can cause bad C code
+    to be generated
+  - cannot make assignments between non-simple data types (like arrays or 
+    or records), even though this is well defined
+  - cannot do equality comparison between non-simple data types (like arrays or 
+    or records), even though this is well defined
 
 * Specifying a command line arg multiple times currently causes Preach to 
   use the default value; this should be fixed at some point.  but beware
@@ -277,10 +296,18 @@ etc., using info from Preach log files.  See the comment at the top of the
 script for usage.
 
 
-Contacts.................................................................
+Contacts & Acknowledgements..............................................
 
-* Jesse Bingham jesse.d.bingham@intel.com
-* John Erickson john.erickson@intel.com
+Primary contacts
+
+* Jesse Bingham (Intel) jesse.d.bingham@intel.com
+* John Erickson (Intel) john.erickson@intel.com
+
+Preach was initially developed by Flavio de Paula and Brad Bingham
+at UBC and they continue to be active.  Thanks to Flemming Andersen (Intel) 
+and Mark Greenstreet (UBC) for supporting this project.   Thanks to 
+Norris Ip (Jasper) for help understanding and solving a tricky symmetry 
+reduction bug.
 
 
  
