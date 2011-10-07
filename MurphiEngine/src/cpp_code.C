@@ -1891,8 +1891,8 @@ char *uniontypedecl::generate_decl()
       fprintf(codefile, 
           "friend int CompareWeight(%s& a, %s& b)\n"
           "{\n"
-          "  if (!a.defined() && b.defined()) return(-1);\n"
-          "  if (a.defined() && !b.defined()) return(1);\n",
+          "  if (!a.defined()) return(b.defined() ? -1 : 0); \n"
+          "  if (!b.defined()) return(1);\n",
           mu_name, mu_name
           );
 
