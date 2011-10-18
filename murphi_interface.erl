@@ -78,9 +78,7 @@ canonicalize(X) ->
     %% normalize(), normalize() might behave like canonicalize()
     binary_to_term(call_port({18,X})).
 equivalentStates(X,Y) -> 
-    io:format("entering equivalentStates... ",[]),
     R = binary_to_term(call_port({19,list_to_binary([X,Y])})),
-    io:format("leaving~n",[]),
     R.
 numberOfHashCollisions() -> 
     binary_to_term(call_port({20,<<0>>})).
