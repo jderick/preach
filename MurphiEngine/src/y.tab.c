@@ -1499,8 +1499,8 @@ char *yyrule[] = {
 #ifdef YYMAXDEPTH
 #define YYSTACKSIZE YYMAXDEPTH
 #else
-#define YYSTACKSIZE 500
-#define YYMAXDEPTH 500
+#define YYSTACKSIZE 5000
+#define YYMAXDEPTH 5000
 #endif
 #endif
 int yydebug;

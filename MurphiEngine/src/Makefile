@@ -39,7 +39,8 @@
 CPLUSPLUS = g++
 
 # choice of the options
-CFLAGS = -O4 -Wno-write-strings             # options for g++
+#CFLAGS = -O4 -Wno-write-strings             # options for g++
+CFLAGS = -O0 -g -Wno-write-strings             # options for g++
 #CFLAGS = -O4 -pipe -static #
 #CFLAGS = -static #
 #CFLAGS = -w #                              # options for OCC
@@ -55,9 +56,9 @@ OBJS = 	lex.yy.o \
 	y.tab.o \
 	cpp_code.o \
 	cpp_code_as.o \
-  	cpp_sym.o \
-  	cpp_sym_aux.o \
-  	cpp_sym_decl.o \
+	cpp_sym.o \
+	cpp_sym_aux.o \
+	cpp_sym_decl.o \
 	decl.o \
 	error.o \
 	expr.o \
