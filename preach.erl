@@ -942,6 +942,7 @@ sendOutQ(R=#r{names=Names, coq=CurOQ, sent=NumSent, esent=ESent, bov=Bov, oqs=OQ
     if Backoff > 100 div tuple_size(Names)
 % LB OFF 1 line here
        orelse 5 * WQSize < OWQSize andalso OWQSize > 10000
+		andalso WQSize > 0
        ->  % other node is in lb
             R#r{coq=(CurOQ + 1) rem tuple_size(Names)};
        true ->
