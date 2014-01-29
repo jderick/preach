@@ -12,8 +12,8 @@ MURPHI_INCLUDE = ${PREACH_ROOT}/MurphiEngine/include
 # ERLANG_INTERFACE_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.2/include
 # ERLANG_INTERFACE_LIBS = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.2/lib
 
-ERLANG_INTERFACE_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.3/include
-ERLANG_INTERFACE_LIBS = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-3.6.3/lib
+ERLANG_INTERFACE_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/lib/${ERL_INTERFACE_VERSION}/include
+ERLANG_INTERFACE_LIBS = ${ERLANG_PREFIX}/lib/erlang/lib/${ERL_INTERFACE_VERSION}/lib
 ERLANG_ERTS_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/usr/include
 MU=${PREACH_ROOT}/MurphiEngine/src/mu
 BEAMS = bitarray.beam bloom.beam murphi_interface.beam diskfilter.beam diskq.beam preach.beam
@@ -35,10 +35,10 @@ run:
 	PREACH_TIMESTAMP=`date +%s` erl -localmode -sname console +h 1000000
 
 preach.beam: preach.erl 
-	erlc $(ERLC_OPTIONS) $<
+	~jerickso/work/bin/erlc $(ERLC_OPTIONS) $<
 
 %.beam: %.erl
-	erlc $(ERLC_OPTIONS) $<
+	~jerickso/work/bin/erlc $(ERLC_OPTIONS) $<
 
 # choice of compiler (with REQUIRED options)
 #GCC=g++   # -O3 core dumps occasionally
