@@ -1,6 +1,6 @@
 
 -module(preach).
--export([run/0,startWorker/15,ready/1, doneNotDone/5, load_balancer/3]).
+-export([run/0,startWorker/16,ready/1, doneNotDone/5, load_balancer/3]).
 
 -record(r,
    {tf, % tracefile
@@ -116,6 +116,8 @@ start(P) ->
     io:format("PReach $Rev: 408 $~n", []),
     Local = is_localMode(),
     Intel = is_intelMode(),
+    Smcpp = init:get_argument(smcpp) =/= error,
+    if Smcpp -> log("smcpp mode ENABLED"); true -> ok end,
     if Local orelse Intel ->
        ok;
        true ->
@@ -137,11 +139,12 @@ start(P) ->
     LBPid = spawn(?MODULE, load_balancer, [Names,getintarg(lbr,0),idle]),
     lists:map(fun(X) -> X ! {lbPid, LBPid} end, tuple_to_list(Names)),
     case init:get_argument(nhr) of error -> Nhr = []; {ok,[Nhr]} -> ok end,
-    case murphi_interface:has_cangetto() of true -> cgt_mask_nonhelpful_rules(Nhr,true); _ -> ok end,
+    case (init:get_argument(no_cgt) == error) andalso murphi_interface:has_cangetto() of true -> cgt_mask_nonhelpful_rules(Nhr,true); _ -> ok end,
     Seed = getintarg(seed,0),
     T0 = now(),
     log("About to compute startstates... ",[],1),
     SS = startstates(),
+    log("startstates computed"),	
     case SS of 
     {error,ErrorMsg} -> 
        log("Murphi found an error in a startstate:~n~s",[ErrorMsg]);
@@ -172,7 +175,9 @@ start(P) ->
 			   "--\tTotal of ~w backoffs with ~w recycled states and ~w discarded states~n" ++
                "----------~n",
                [NumStates, Dur, P, trunc(NumStates/Dur), trunc((NumStates/Dur)/P),
-                OmissionProb,BoCount,NumRecyc,NumDisc]);
+                OmissionProb,BoCount,NumRecyc,NumDisc]),
+    		if Smcpp -> io:format("Note: Prob of omission undefined in smcpp mode~n"); true -> ok end;
+	
       cex -> ok
        end
     end.
@@ -195,6 +200,7 @@ initThreads(Names, 0) ->
 
 initThreads(Names, NumThreads) ->
     Local = is_localMode(),
+    Smcpp = init:get_argument(smcpp) =/= error,
     UseSym = init:get_argument(nosym) == error,
     MSU = init:get_argument(msu) =/= error,
     CheckDeadlocks = init:get_argument(ndl) == error,
@@ -208,15 +214,15 @@ initThreads(Names, NumThreads) ->
     Seed =  getintarg(seed,0),
     HashSize = getintarg(m,mDefault()),
     CgtHashSize = getintarg(cm,1024),
-    DoCgt = murphi_interface:has_cangetto() and (init:get_argument(no_cgt) == error),
+    DoCgt = (init:get_argument(no_cgt) == error) andalso murphi_interface:has_cangetto(),  
     PR = getintarg(pr,5),
     LB = getintarg(lbr,0),
     PRI = init:get_argument(pri) /= error,
     if Local ->
-            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU,Nhr,Cgthdt,DoCgt,PRI,PSR],
+            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,false,Seed,MSU,Nhr,Cgthdt,DoCgt,PRI,PSR,Smcpp],
             ID = spawn(preach,startWorker,Args);
        true ->
-            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU,Nhr,Cgthdt,DoCgt,false,PSR],
+            Args = [model_name(), UseSym,HashSize,CgtHashSize,CheckDeadlocks,NoTrace,PR,not (LB==0),Seed,MSU,Nhr,Cgthdt,DoCgt,false,PSR,Smcpp],
             ID = spawnAndCheck(mynode(NumThreads),preach,startWorker,Args),
             link(ID)
     end,
@@ -638,7 +644,7 @@ second({_,X}) -> X.
 %% Returns : ok
 %%     
 %%----------------------------------------------------------------------
-startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU,Nhr,Cgthdt,DoCgt,PrintRulesInfo,PSR) ->
+startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Profiling_rate,UseLB,Seed,MSU,Nhr,Cgthdt,DoCgt,PrintRulesInfo,PSR,Smcpp) ->
     log("startWorker() entered (model is ~s;UseSym is ~w;CheckDeadlocks is ~w;UseLB is ~w;MSU is ~w)~n", 
          [ModelName,UseSym,CheckDeadlocks,UseLB,MSU],1),
     %crypto:start(),
@@ -650,7 +656,9 @@ startWorker(ModelName, UseSym, HashSize,CgtHashSize, CheckDeadlocks,NoTrace,Prof
     log("running model in ~s~n", [rundir()],1),
     murphi_interface:start(rundir(), ModelName),
     timer:sleep(1000),
+    murphi_interface:set_smcpp(Smcpp),
     murphi_interface:init_hash(HashSize),
+    timer:sleep(1000),
     WQ = initWorkQueue(),
     OQ = array:from_list(initOutQueues(tuple_size(Names))),
     ReQ = initRecycleQueue(),

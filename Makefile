@@ -10,8 +10,8 @@ ERLC_OPTIONS = +\{hipe,\[o3\]\}
 MURPHI_INCLUDE = ${PREACH_ROOT}/MurphiEngine/include
 # for UBC:
 
-ERLANG_INTERFACE_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-${ERLANG_INTERFACE_VERSION}/include
-ERLANG_INTERFACE_LIBS = ${ERLANG_PREFIX}/lib/erlang/lib/erl_interface-${ERLANG_INTERFACE_VERSION}/lib
+ERLANG_INTERFACE_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/lib/${ERL_INTERFACE_VERSION}/include
+ERLANG_INTERFACE_LIBS = ${ERLANG_PREFIX}/lib/erlang/lib/${ERL_INTERFACE_VERSION}/lib
 ERLANG_ERTS_INCLUDE = ${ERLANG_PREFIX}/lib/erlang/usr/include
 MU=${PREACH_ROOT}/MurphiEngine/src/mu
 BEAMS = bitarray.beam bloom.beam murphi_interface.beam diskfilter.beam diskq.beam preach.beam
