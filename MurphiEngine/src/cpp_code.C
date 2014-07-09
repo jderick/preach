@@ -1664,7 +1664,7 @@ int make_bit_compacted_value_assign(stelist *unionmembers)
   typedecl *t= (typedecl *) unionmembers->s->getvalue();
   fprintf(codefile,
           "    if ((val >= %d) && (val <= %d))"
-          " return (mu__byte::value(val-%d)+%d);\n",
+          " return (mu__byte::value(val-(%d))+(%d));\n",
           t->getleft(),
           t->getright(),
           t->getleft() - base,

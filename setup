@@ -1,7 +1,7 @@
 # YOU MUST CONFIGURE THESE VARS PRIOR TO RUNNING
 # Copy this file to ~/.preach_setup and source it from your ~/.cshrc.$USER file
 
-setenv PREACH_ROOT /nfs/site/disks/ltdn_lrb_disk674/lrb2/work/valfc19/jdbingha/preach
+setenv PREACH_ROOT /p/dt/fvcoe/pub/tools/PReach/preach
 setenv PREACH_SSH "ssh"
 setenv PREACH_TEMP /netbatch
 
@@ -15,6 +15,7 @@ setenv PREACH_TEMP /netbatch
 # luck running with some older versions.
 
 setenv ERLANG_PREFIX /usr/local
+setenv ERLANG_INTERFACE_VERSION 3.7.7
 
 # Erlang binaries are typically installed here but on some systems may be located elsewhere
 # If they are already in your path you should not need to set this variable

@@ -97,8 +97,12 @@ system "cp hosts $WORKDIR"; # hosts used by preach to start workers
 
 chdir $WORKDIR;
 
-system "erl -pa $WORKDIR +A 10 -kernel net_ticktime 30000 -sname $ENV{USER}${PREACH_TIMESTAMP}0 -detached";
-system "erl -pa $WORKDIR +A 10 -kernel net_ticktime 30000 -sname $ENV{USER}${PREACH_TIMESTAMP}root -run preach run -intel -model $model -run init stop -noshell $restargs";
+system "erl -pa $WORKDIR +A 10 -kernel net_ticktime 10000000 -sname $ENV{USER}${PREACH_TIMESTAMP}0 -detached";
+system "erl -pa $WORKDIR +A 10 -kernel net_ticktime 10000000 -sname $ENV{USER}${PREACH_TIMESTAMP}root -run preach run -intel -model $model -run init stop -noshell $restargs";
+
+# causes timeouts during trace construction
+#system "erl -pa $WORKDIR -sname $ENV{USER}${PREACH_TIMESTAMP}0 -detached";
+#system "erl -pa $WORKDIR -sname $ENV{USER}${PREACH_TIMESTAMP}root -run preach run -intel -model $model -run init stop -noshell $restargs";
 
 
 chdir $ORIGDIR;

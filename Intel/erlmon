@@ -1,7 +1,5 @@
 #!/usr/bin/env bash 
 
-echo Running erlmon on `hostname` as node $PREACH_NODE_NAME > $LOGDIR/`hostname`.info
-
 export PREACH_MACHINE=$1
 export PREACH_NODE_NAME=$2
 export LOGDIR=$3
@@ -11,6 +9,8 @@ export ERLANG_PREFIX=$6
 
 : ${LOGDIR:?} ${EPMD:?} ${PREACH_MACHINE:?} ${PREACH_NODE_NAME:?} ${PREACH_TEMP:?} ${ERLANG_PREFIX:?}
 
+echo Running erlmon on `hostname` as node $PREACH_NODE_NAME > $LOGDIR/`hostname`.info
+
 cleanup()
 {
     echo cleaning up >> $LOGDIR/`hostname`.info
@@ -19,7 +19,9 @@ cleanup()
 }
 
 trap cleanup 0
-trap "exit 2" 1 2 3 13 15
+# JohnE, Jesse and Brad added some more signals, inpsired by a previous version.  Make sense?
+# trap "exit 2" KILL TERM INT ABRT
+trap "exit 2" HUP QUIT PIPE KILL TERM INT ABRT
 
 WORKDIR=${PREACH_TEMP}/preachdir.${PREACH_NODE_NAME}
 mkdir $WORKDIR
@@ -32,7 +34,7 @@ scp "${PREACH_MACHINE}:${LOGDIR}/diskmon" $WORKDIR
 cd $WORKDIR
 export ERL_EPMD_PORT=$EPMD
 export ERL_FULLSWEEP_AFTER=0
-nohup ${ERLANG_PREFIX}/bin/erl -pa $WORKDIR +A 10 -kernel net_ticktime 30000 -sname ${PREACH_NODE_NAME} -detached
+nohup ${ERLANG_PREFIX}/bin/erl -pa $WORKDIR +A 10 -kernel net_ticktime 10000000 -sname ${PREACH_NODE_NAME} -detached
 
 nohup $WORKDIR/diskmon >& $LOGDIR/`hostname`.usage 
 
