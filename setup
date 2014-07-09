@@ -15,7 +15,7 @@ setenv PREACH_TEMP /netbatch
 # luck running with some older versions.
 
 setenv ERLANG_PREFIX /usr/local
-setenv ERLANG_INTERFACE_VERSION 3.7.7
+setenv ERL_INTERFACE_VERSION erl_interface-3.7.7
 
 # Erlang binaries are typically installed here but on some systems may be located elsewhere
 # If they are already in your path you should not need to set this variable

@@ -292,6 +292,14 @@ static void example_drv_output(ErlDrvData handle, char *buff, ErlDrvSizeT /*int*
       unsigned char rule = *(buff+1);
       int count = Rules->NextStatePreach((buff+2), d->state_buffer,rule);
       driver_output(d->port, d->state_buffer, count);      
+    } else if (fn == 55) {
+	printf("IN THE DUMMY CALL\n");
+       unsigned int param = *((unsigned int*)(buff+1));
+	printf("PARAM IS %u\n",param);
+      int i=0;
+      ei_encode_version(d->state_buffer, &i);
+      ei_encode_long(d->state_buffer,&i,0);
+      driver_output(d->port, d->state_buffer, i);      
     } else if (fn == 12) {
       unsigned int rule = *((unsigned int *)(buff+1));
       int count = Rules->RuleName(d->state_buffer, rule);
