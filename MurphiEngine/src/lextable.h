@@ -61,8 +61,8 @@
 /********************
   constants
   ********************/
-#define LEXTABLESIZE 1024    /* must be a power of two. */
-#define RESERVETABLESIZE 512 /* must be a power of two. */
+#define LEXTABLESIZE 65536    /* must be a power of two. */
+#define RESERVETABLESIZE 65536 /* must be a power of two. */
 
 /********************
   class lextable
