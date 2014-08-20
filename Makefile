@@ -3,6 +3,12 @@
 #
 WORKQ_FILE = /tmp/workQueue.${USER}
 
+# JesseB added these three lines (which will remain different from the PReach repo's Makefile)
+# to support Intel's world-useable PReach (is there a better way to do this?)
+PREACH_ROOT = /p/dt/fvcoe/pub/tools/PReach/preach/
+ERLANG_PREFIX = /p/dt/fvcoe/pub/
+ERL_INTERFACE_VERSION = erl_interface-3.7.7
+
 # -W0 turns off warnings here... 
 # remove +native if you want accurate stack dumps from the Erlang Runtime System
 ERLC_OPTIONS = +\{hipe,\[o3\]\} 
@@ -65,6 +71,8 @@ CFLAGS=-Wno-deprecated -DCATCH_DIV
 
 %.C: %.m 
 	${MU} -c -b $<
+	echo "if RULES_IN_WORLD below is bigger than 5000, you're probably exceeding the capacity of PReach:"
+	grep RULES_IN_WORLD $@
 
 %.so: %.C ${PREACH_ROOT}/MurphiEngine/include/*
 	$(GCC) -O2 -DERLANG -DCATCH_DIV -Wno-write-strings -Wno-deprecated -g -lm  -o $@ -fpic -shared $<  \
