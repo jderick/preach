@@ -48,7 +48,8 @@ preach.beam: preach.erl
 
 # choice of compiler (with REQUIRED options)
 #GCC=g++   # -O3 core dumps occasionally
-GCC = /usr/intel/pkgs/gcc/4.5.0/bin/g++
+#GCC = /usr/intel/pkgs/gcc/4.5.0/bin/g++
+GCC = g++
 OFLAGS=-O2
 
 # options (really OPTIONAL)
