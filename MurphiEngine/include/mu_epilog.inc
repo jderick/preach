@@ -105,7 +105,7 @@ typedef struct {
   char* state_buffer;
   char* erlang_false;
   char* erlang_true;
-  int size;
+  ErlDrvSizeT /*int*/ size;
   state_set* brad_hash;
   state_set* cgt_hash;
 } example_data;
@@ -157,7 +157,7 @@ static void example_drv_stop(ErlDrvData handle)
   driver_free((char*)handle);
 }
 
-static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
+static void example_drv_output(ErlDrvData handle, char *buff, ErlDrvSizeT /*int*/ bufflen)
 {
     example_data* d = (example_data*)handle;
     char fn = buff[0], arg = buff[1], res;
@@ -292,6 +292,14 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
       unsigned char rule = *(buff+1);
       int count = Rules->NextStatePreach((buff+2), d->state_buffer,rule);
       driver_output(d->port, d->state_buffer, count);      
+    } else if (fn == 55) {
+	printf("IN THE DUMMY CALL\n");
+       unsigned int param = *((unsigned int*)(buff+1));
+	printf("PARAM IS %u\n",param);
+      int i=0;
+      ei_encode_version(d->state_buffer, &i);
+      ei_encode_long(d->state_buffer,&i,0);
+      driver_output(d->port, d->state_buffer, i);      
     } else if (fn == 12) {
       unsigned int rule = *((unsigned int *)(buff+1));
       int count = Rules->RuleName(d->state_buffer, rule);
@@ -420,7 +428,8 @@ static void example_drv_output(ErlDrvData handle, char *buff, int bufflen)
               driver_output(d->port, d->state_buffer, i);
             }
 		}
-   } else {
+}
+else {
       printf("Big trouble in Murphi Engine... exitting\n");
       exit(1);
    }
@@ -435,10 +444,13 @@ ErlDrvEntry example_driver_entry = {
     NULL,                       /* F_PTR ready_output, called when output descriptor ready */
     PROTOCOL_NAME,              /* char *driver_name, the argument to open_port */
     NULL,                       /* F_PTR finish, called when unloaded */
-    NULL,                       /* F_PTR control, port_command callback */
+ NULL, /* handle?? */   
+ NULL,                       /* F_PTR control, port_command callback */
     NULL,                       /* F_PTR timeout, reserved */
-    NULL                        /* F_PTR outputv, reserved */
-};
+    NULL, 			/* F_PTR outputv, reserved */
+    /* BRAD: stupid junk needed for new driver API */
+    NULL, NULL, NULL, NULL, ERL_DRV_EXTENDED_MARKER, ERL_DRV_EXTENDED_MAJOR_VERSION, 0, 0, NULL, NULL, NULL
+}; 
 
 DRIVER_INIT(PROTOCOL_NAME) /* must match name in driver_entry */
 {

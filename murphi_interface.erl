@@ -5,8 +5,10 @@
          normalize/1,fireRule/2,rulenumToName/1, startstateToName/1, brad_hash/1,
          whatRuleFired/2,init_hash/1,probNoOmission/0,canonicalize/1, 
          equivalentStates/2, numberOfHashCollisions/0, rules_info/0,
+	 set_smcpp/1,
 % stuff added to support CGT....
          cgt_init_hash/1, cgt_hash_query/1, cgt_hash_add/1, cgt_successor/1, cgt_mask_rule/1, rule_count/0 ]).
+-export([dummy/1]).
 
 
 start(Path, SharedLib) ->
@@ -35,12 +37,33 @@ init(SharedLib) ->
 
 stop() -> murphi_int ! stop.
 
+swapEndian(<<A:8,B:8,C:8,D:8>>) -> <<D,C,B,A>>.
+
+insert(K,V) ->  Kbits = swapEndian(<<K:32>>),
+                Vbits = swapEndian(<<V:32>>),
+                binary_to_term(call_port({55, <<Kbits/binary, Vbits/binary>> })).
+
+smcpp_hash_state(State) -> Key = erlang:phash2(State,twoTo28()),
+                     Val = erlang:phash2({State,0},twoTo31()),
+                     insert(Key,Val).
+
+
+twoTo28() -> erlang:trunc(math:pow(2,28)).
+twoTo31() -> erlang:trunc(math:pow(2,31)).
+
+set_smcpp(DoSmcpp) -> put(smcpp,DoSmcpp).
+
+dummy(X) -> binary_to_term(call_port({55,swapEndian(<<X:32>>)})).
+
 startstates() -> 
     binary_to_term(call_port({1, <<0>>})).
 nextstates(Y) -> 
     binary_to_term(call_port({2, Y})).
 checkInvariants(X) -> 
-    binary_to_term(call_port({3, X})).
+	case get(smcpp) of 
+		false -> binary_to_term(call_port({3, X}));
+		true -> pass % no invariants in smcpp
+	end.
 stateToString(X) -> 
     binary_to_term(call_port({4, X})).
 is_p_state(X) -> 
@@ -62,7 +85,10 @@ rulenumToName(RuleNum) ->
 startstateToName(SSNum) -> 
     binary_to_term(call_port({13,list_to_binary([SSNum])})).
 brad_hash(X) -> 
-    binary_to_term(call_port({14,X})).
+	case get(smcpp) of
+		false -> binary_to_term(call_port({14,X}));
+	        true -> smcpp_hash_state(X)
+	end.
 whatRuleFired(X,Y) -> 
     binary_to_term(call_port({15,list_to_binary([X,Y])})).
 init_hash(Size) -> 
@@ -70,7 +96,10 @@ init_hash(Size) ->
     %% way i found to pass an integer to the c code
     %% (actually this assume the int fits into two bytes and 
     %% is unsigned, or something) -- JESSE
-    call_port({16,list_to_binary([Size rem 256,Size div 256])}), ok.
+	case get(smcpp) of false ->
+    		call_port({16,list_to_binary([Size rem 256,Size div 256])});
+			true -> binary_to_term(call_port({56, <<0>>}))
+	end, ok.
 probNoOmission() ->
     binary_to_term(call_port({17, <<0>>})).
 canonicalize(X) -> 
@@ -78,9 +107,7 @@ canonicalize(X) ->
     %% normalize(), normalize() might behave like canonicalize()
     binary_to_term(call_port({18,X})).
 equivalentStates(X,Y) -> 
-    io:format("entering equivalentStates... ",[]),
     R = binary_to_term(call_port({19,list_to_binary([X,Y])})),
-    io:format("leaving~n",[]),
     R.
 numberOfHashCollisions() -> 
     binary_to_term(call_port({20,<<0>>})).

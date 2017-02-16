@@ -272,15 +272,18 @@ public:
     // right = rt-shift; 
     right = rt;
     numbits = CeilLog2(right - left + 2);
+	// this code changed by Jesse & John, Aug 2014, to fix symmetry reduction bug
+	// that arises when enums have more than 255 elements.
     if (args->no_compression) {
-	bitsalloc = BYTES(numbits);
-	if (numbits>8 || right > 254) {
-	  mu_type = "mu__long";
-	  bitsalloc = 32;
-	}
-      }
-    else
-	bitsalloc = numbits;
+	   bitsalloc = BYTES(numbits);
+    }
+    else {
+	   bitsalloc = numbits;
+    }
+    if (numbits>8 || right > 254) {
+      mu_type = "mu__long";
+      bitsalloc = 32;
+    }
   };
   virtual ste * getidvalues() const { return idvalues; };
   virtual void setidvalues( ste * vs ) { idvalues = vs; };

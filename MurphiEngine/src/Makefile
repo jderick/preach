@@ -74,6 +74,7 @@ OBJS = 	lex.yy.o \
 
 mu: $(OBJS)
 	$(CPLUSPLUS) -o mu $(CFLAGS) $(OBJS)
+	chmod a+rx mu
 
 mu.o: mu.C mu.h
 	$(CPLUSPLUS) -c $(CFLAGS) mu.C

@@ -257,6 +257,7 @@ public:
 
   // checking the presence of state "in"
   bool simple_was_present( state *&in, bool, bool );  
+  bool simple_was_present_hashkey(unsigned int hashkey, bool, bool );  
     /* old was_present without checking -sym */
   bool was_present( state *&in, bool, bool );
     /* checking -sym before calling simple_was_present() */
