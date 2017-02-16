@@ -104,12 +104,18 @@ system "$ENV{ERLANG_PREFIX}/bin/erl -pa $WORKDIR +A 10 -kernel net_ticktime 1000
 #system "erl -pa $WORKDIR -sname $ENV{USER}${PREACH_TIMESTAMP}0 -detached";
 #system "erl -pa $WORKDIR -sname $ENV{USER}${PREACH_TIMESTAMP}root -run preach run -intel -model $model -run init stop -noshell $restargs";
 
+# causes timeouts during trace construction
+#system "erl -pa $WORKDIR -sname $ENV{USER}${PREACH_TIMESTAMP}0 -detached";
+#system "erl -pa $WORKDIR -sname $ENV{USER}${PREACH_TIMESTAMP}root -run preach run -intel -model $model -run init stop -noshell $restargs";
+
 
 chdir $ORIGDIR;
 
 print "Changing to $ORIGDIR\n";
 print "Now in " . `pwd`;
 
+$email = `finger -s jerickso | tail -1 | perl -ane '{print \$F[1]}'`;
+system "mail ${email}\@intel.com -s 'preach complete' < /dev/null";
 print "PRUN COMPLETE\n";
 
 exit 0;
