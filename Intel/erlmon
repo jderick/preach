@@ -19,7 +19,9 @@ cleanup()
 }
 
 trap cleanup 0
-trap "exit 2" KILL TERM INT ABRT
+# JohnE, Jesse and Brad added some more signals, inpsired by a previous version.  Make sense?
+# trap "exit 2" KILL TERM INT ABRT
+trap "exit 2" HUP QUIT PIPE KILL TERM INT ABRT
 
 WORKDIR=${PREACH_TEMP}/preachdir.${PREACH_NODE_NAME}
 mkdir $WORKDIR

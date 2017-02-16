@@ -439,7 +439,7 @@ char *arraytypedecl::generate_decl()
 
     /* declare range-checked operator [] */
     fprintf(codefile,
-        "  %s& operator[] (int index) /* const */\n"
+        "  const %s& operator[] (int index)  const \n"
         "  {\n",
         elementtype->generate_code() );
     switch (indextype->gettypeclass()) {
@@ -511,6 +511,81 @@ char *arraytypedecl::generate_decl()
       Error.Error("Internal: Odd value for arraydecl::elementtype;");
       break;
     }   
+
+    fprintf(codefile,
+        "  %s& operator[] (int index) \n"
+        "  {\n",
+        elementtype->generate_code() );
+    switch (indextype->gettypeclass()) {
+    case typedecl::Enum:
+    case typedecl::Range:
+      fprintf(codefile, 
+          "#ifndef NO_RUN_TIME_CHECKING\n"
+          "    if ( ( index >= %d ) && ( index <= %d ) )\n"
+          "      return array[ index - %d ];\n"
+          "    else {\n"
+          "      if (index==UNDEFVAL) \n"
+          "        Error.Error(\"Indexing to %%s using an undefined value.\", name);\n"
+          "      else\n"
+          "        Error.Error(\"%%d not in index range of %%s.\", index, name);\n"
+          "      return array[0];\n"
+          "    }\n"
+          "#else\n"
+          "    return array[ index - %d ];\n"
+          "#endif\n"
+          "  };\n",
+          indextype->getleft(),  /* lower bound of range (2nd line of format) */
+          indextype->getright(), /* upper bound */
+          indextype->getleft(),  /* index adjust (3rd line) */
+          indextype->getleft()); /* index adjust (after #else) */
+      break;
+    case typedecl::Scalarset:
+      fprintf(codefile,
+          "#ifndef NO_RUN_TIME_CHECKING\n"
+              "    if ( ( index >= %d ) && ( index <= %d ) )\n"
+          "      return array[ index - %d ];\n"
+          "    else\n"
+          "      {\n"
+          "        if (index==UNDEFVAL) \n"
+          "          Error.Error(\"Indexing to %%s using an undefined value.\", name);\n"
+          "        else\n"
+          "          Error.Error(\"Funny index value %%d for %%s: %s is internally represented from %d to %d.\\n"
+          "Internal Error in Type checking.\",index, name);\n"
+          "        return array[0];\n"
+          "      }\n"
+          "#else\n"
+              "    return array[ index - %d ];\n"
+          "#endif\n"
+          "  };\n",
+          indextype->getleft(),  /* lower bound of range (2nd line of format) */
+          indextype->getright(), /* upper bound */
+          indextype->getleft(),  /* index adjust (3rd line) */
+          indextype->name, indextype->getright(), indextype->getleft(),
+          indextype->getleft()); /* index adjust (after #else) */
+      break;
+    case typedecl::Union:
+      (void) make_elt_ref_by_union(((uniontypedecl *)indextype)->getunionmembers());
+      fprintf(codefile,
+          "    if (index==UNDEFVAL) \n"
+          "      Error.Error(\"Indexing to %%s using an undefined value.\", name);\n"
+          "    else\n"
+          "      Error.Error(\"Funny index value %%d for %%s. (Internal Error in Type Checking.\",index, name);\n"
+          "    return array[0];\n"
+          "  }\n");
+      break;
+    case typedecl::Array:
+    case typedecl::Record:
+    case typedecl::Error_type:
+    default:
+      // the error should already be flagged. 
+    
+      // On the other hand, if this error happened, it should never
+      // have gotten here. Therefore, we will put an error here, because
+      // redundant error-checking is never a waste. --RLM
+      Error.Error("Internal: Odd value for arraydecl::elementtype;");
+      break;
+    }   
+      
       
     /* and an operator =. */
     generate_assign();
@@ -2239,12 +2314,12 @@ char *valparam::generate_decl()
 char *constparam::generate_decl()
 {
   if (!declared) {
-    if ( type->issimple() )
+    //    if ( type->issimple() )
       fprintf(codefile,
           "const %s& %s",
           type->generate_code(),  mu_name);
-    else
-      fprintf(codefile, "%s& %s", type->generate_code(), mu_name);
+      //    else
+      //      fprintf(codefile, "%s& %s", type->generate_code(), mu_name);
 
     declared = TRUE;
   }

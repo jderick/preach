@@ -380,6 +380,10 @@ double state_set::ProbAtLeastOneOmittedState()
   return (pNO);
 }
 
+
+
+
+
 bool 
 state_set::simple_was_present( state *& in, bool valid, bool permanent )
 /* changes in to point to the first state found with that pattern. */
