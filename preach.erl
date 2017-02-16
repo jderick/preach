@@ -1074,7 +1074,7 @@ pmap(F, L) ->
      || Pid <- [spawn(fun() -> Parent ! {self(), F(X)} end)
                 || X <- L]].
 
-min(X, Y) -> if X > Y -> Y; true -> X end.
+%min(X, Y) -> if X > Y -> Y; true -> X end.
 
 %
 %  {bound_hit,StateList}
