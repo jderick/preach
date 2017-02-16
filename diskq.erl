@@ -66,7 +66,7 @@ flush_wc(Q=#q{fsize=FSize, fd=FD, wc=WC, bl=BL, sort=KS}) ->
        true ->
 	    WC2 = lists:reverse(WC)
     end,
-    Bin = term_to_binary(WC2),
+    Bin = zlib:zip(term_to_binary(WC2)),
     Len = size(Bin),
     {ok, Begin} = find_block(Len, FSize, BL),
     ok  = file:pwrite(FD, Begin, Bin),
@@ -115,7 +115,7 @@ fill_rc(Q=#q{rc=[], bl=[], wc=WC, sort=KS}) ->
 
 fill_rc(Q=#q{rc=[], bl=[{Begin, Length}|BL], fd=FD}) ->
     {ok, Bin} = file:pread(FD, Begin, Length),
-    Q#q{rc=binary_to_term(Bin), bl=BL}.
+    Q#q{rc=binary_to_term(zlib:unzip(Bin)), bl=BL}.
 
 
 peek(Q=#q{count=0}) ->
@@ -134,7 +134,7 @@ foldl(F, A, #q{rc=RC, bl=BL, fd=FD, wc=WC}) ->
 foldl_blocks(_F, A, [], _FD) -> A;
 foldl_blocks(F, A, [{Begin, Length}|BL], FD) ->
     {ok, Bin} = file:pread(FD, Begin, Length),
-    A2 = lists:foldl(F, A, binary_to_term(Bin)),
+    A2 = lists:foldl(F, A, binary_to_term(zlib:unzip(Bin))),
     foldl_blocks(F, A2, BL, FD).
 
 bulk_foldl(F, A, #q{rc=RC, bl=BL, fd=FD, wc=WC, sort=KS}) ->
@@ -149,7 +149,7 @@ bulk_foldl(F, A, #q{rc=RC, bl=BL, fd=FD, wc=WC, sort=KS}) ->
 bulk_foldl_blocks(_F, A, [], _FD) -> A;
 bulk_foldl_blocks(F, A, [{Begin, Length}|BL], FD) ->
     {ok, Bin} = file:pread(FD, Begin, Length),
-    A2 = F(binary_to_term(Bin), A),
+    A2 = F(binary_to_term(zlib:unzip(Bin)), A),
     bulk_foldl_blocks(F, A2, BL, FD).
 
 
@@ -162,7 +162,7 @@ split(Q=#q{name=Name, max=CacheSize}, KeyIdx) ->
 				      true ->
 					   SL = lists:sort(B)
 				   end,
-				   Bin = term_to_binary(SL),
+				   Bin = zlib:zip(term_to_binary(SL)),
 				   Len = size(Bin),
 				   ok = file:pwrite(NFD, 0, Bin),
 				   {[NewQ#q{bl=[{0,Len}]} | QL], N+1}
@@ -219,15 +219,15 @@ keymerge([], [], [], [], _, _, _, _, OutQ) ->
 
 keymerge([{PosA, LenA} | BLA], BLB, A, B, FDA, FDB, KeyFuns, CacheSize, OutQ) when length(A) < CacheSize ->
     {ok, Bin} = file:pread(FDA, PosA, LenA),
-    keymerge(BLA, BLB, A ++ binary_to_term(Bin), B, FDA, FDB, KeyFuns, CacheSize, OutQ);
+    keymerge(BLA, BLB, A ++ binary_to_term(zlib:unzip(Bin)), B, FDA, FDB, KeyFuns, CacheSize, OutQ);
 
 keymerge(BLA, [{PosB, LenB} | BLB], A, B, FDA, FDB, KeyFuns, CacheSize, OutQ) when length(B) < CacheSize ->
     {ok, Bin} = file:pread(FDB, PosB, LenB),
-    keymerge(BLA, BLB, A, B ++ binary_to_term(Bin), FDA, FDB, KeyFuns, CacheSize, OutQ);
+    keymerge(BLA, BLB, A, B ++ binary_to_term(zlib:unzip(Bin)), FDA, FDB, KeyFuns, CacheSize, OutQ);
 
 keymerge(BLA, BLB, A, B, FDA, FDB, KeyFuns, CacheSize, OutQ=#q{bl=OutBL, fd=OutFD, count=Count}) ->
     {A2, B2, Block} = nkeymerge(CacheSize, A, B, hd(KeyFuns), hd(tl(KeyFuns))),
-    Bin = term_to_binary(Block),
+    Bin = zlib:zip(term_to_binary(Block)),
     Len = size(Bin),
     {ok, Begin} = find_block(Len, no_limit, OutBL),
     ok = file:pwrite(OutFD, Begin, Bin),
@@ -278,11 +278,11 @@ findsubtract(BLA, [], [{NewHash, Level} | A], [], FDA, FDB, Hash, MinLevel) ->
 
 findsubtract([{PosA, LenA} | BLA], BLB, [], B, FDA, FDB, Hash, MinLevel) ->
     {ok, Bin} = file:pread(FDA, PosA, LenA),
-    findsubtract(BLA, BLB, binary_to_term(Bin), B, FDA, FDB, Hash, MinLevel);
+    findsubtract(BLA, BLB, binary_to_term(zlib:unzip(Bin)), B, FDA, FDB, Hash, MinLevel);
 
 findsubtract(BLA, [{PosB, LenB} | BLB], A, [], FDA, FDB, Hash, MinLevel) ->
     {ok, Bin} = file:pread(FDB, PosB, LenB),
-    findsubtract(BLA, BLB, A, binary_to_term(Bin), FDA, FDB, Hash, MinLevel);
+    findsubtract(BLA, BLB, A, binary_to_term(zlib:unzip(Bin)), FDA, FDB, Hash, MinLevel);
 
 
 findsubtract(BLA, BLB, A, B, FDA, FDB, Hash, MinLevel) ->
