@@ -742,9 +742,11 @@ check_invariants(State, _=#r{th=TraceH, tf=TF, names=Names, usesym=UseSym, seed=
    case murphi_interface:checkInvariants(State) of
    pass -> ok;
    {fail, FailedInvariant} ->
+      io:format("~n*************************************************************************~n"),
       log("Found Invariant Failure: ~s",[FailedInvariant]),
       log("Just in case cex construction fails, here it is:",[]),
       printState(State),
+      io:format("*************************************************************************~n~n"),
       log("And in case you care, here are the rules that are enabled:",[]),
       lists:map(fun(S) -> io:format("~s~n",[S]) end, enabled_rules(State)),
       TraceH ! {error_found, [State]},
@@ -756,18 +758,22 @@ expand_a_state(State, R=#r{count=Count,oq=OutQ, tf=TF, th=TraceH, names=Names, u
    TransitionResult = transition(State),
    case TransitionResult of 
    {error,ErrorMsg,RuleNum}  ->
+      io:format("~n*************************************************************************~n"),
       log("Murphi Engine threw an error evaluating rule \"~s\" (likely an assertion in the Murphi model failed):~n~s",
           [murphi_interface:rulenumToName(RuleNum),ErrorMsg]),
       log("Just in case cex construction fails, here it is:",[]),
       printState(State),
+      io:format("*************************************************************************~n~n"),
       TraceH ! {error_found, [State]},
       traceMode(Names, TF, TraceH, UseSym, Seed);
    _ ->
       NewStates = if (MSU) -> lists:usort(TransitionResult); true -> TransitionResult end,
       if (CheckDeadlocks andalso NewStates == []) ->
+         io:format("~n*************************************************************************~n"),
          log("Found (global) deadlock state.",[]),
          log("Just in case cex construction fails, here it is:",[]),
          printState(State),
+         io:format("*************************************************************************~n~n"),
          TraceH ! {error_found, [State]},
          traceMode(Names, TF, TraceH, UseSym, Seed);
       true -> 
