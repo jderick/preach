@@ -75,7 +75,7 @@ cp $PREACH_ROOT/setup $LOGDIR
 cd $LOGDIR
 
 # for 'bigger' jobs (>10^9 states?) use this version
-nbjob run --target $queue --log-file "${model}.log" --qslot $slot --class $class' && fDS("/netbatch") > 100000 && CPUCount >= 4' --parallel "slots=${nodes},slots_per_host=1,exit_on_master_finish=true" prun $* -intel -m 7000 -msu
+nbjob run --target $queue --log-file "${model}.log" --qslot $slot --class $class' && fDS("/netbatch") > 100000 && CPUCount >= 4' --parallel "slots=${nodes},slots_per_host=1,exit_on_master_finish=true" prun $* -intel 
 
 #nbjob run --target $queue --log-file "${model}.log" --qslot $slot --class $class --parallel "slots=${nodes},exit_on_master_finish=true" prun $* -intel -m 7000 -msu
 
