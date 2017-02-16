@@ -439,7 +439,7 @@ char *arraytypedecl::generate_decl()
 
     /* declare range-checked operator [] */
     fprintf(codefile,
-        "  %s& operator[] (int index) /* const */\n"
+        "  const %s& operator[] (int index)  const \n"
         "  {\n",
         elementtype->generate_code() );
     switch (indextype->gettypeclass()) {
@@ -511,6 +511,81 @@ char *arraytypedecl::generate_decl()
       Error.Error("Internal: Odd value for arraydecl::elementtype;");
       break;
     }   
+
+    fprintf(codefile,
+        "  %s& operator[] (int index) \n"
+        "  {\n",
+        elementtype->generate_code() );
+    switch (indextype->gettypeclass()) {
+    case typedecl::Enum:
+    case typedecl::Range:
+      fprintf(codefile, 
+          "#ifndef NO_RUN_TIME_CHECKING\n"
+          "    if ( ( index >= %d ) && ( index <= %d ) )\n"
+          "      return array[ index - %d ];\n"
+          "    else {\n"
+          "      if (index==UNDEFVAL) \n"
+          "        Error.Error(\"Indexing to %%s using an undefined value.\", name);\n"
+          "      else\n"
+          "        Error.Error(\"%%d not in index range of %%s.\", index, name);\n"
+          "      return array[0];\n"
+          "    }\n"
+          "#else\n"
+          "    return array[ index - %d ];\n"
+          "#endif\n"
+          "  };\n",
+          indextype->getleft(),  /* lower bound of range (2nd line of format) */
+          indextype->getright(), /* upper bound */
+          indextype->getleft(),  /* index adjust (3rd line) */
+          indextype->getleft()); /* index adjust (after #else) */
+      break;
+    case typedecl::Scalarset:
+      fprintf(codefile,
+          "#ifndef NO_RUN_TIME_CHECKING\n"
+              "    if ( ( index >= %d ) && ( index <= %d ) )\n"
+          "      return array[ index - %d ];\n"
+          "    else\n"
+          "      {\n"
+          "        if (index==UNDEFVAL) \n"
+          "          Error.Error(\"Indexing to %%s using an undefined value.\", name);\n"
+          "        else\n"
+          "          Error.Error(\"Funny index value %%d for %%s: %s is internally represented from %d to %d.\\n"
+          "Internal Error in Type checking.\",index, name);\n"
+          "        return array[0];\n"
+          "      }\n"
+          "#else\n"
+              "    return array[ index - %d ];\n"
+          "#endif\n"
+          "  };\n",
+          indextype->getleft(),  /* lower bound of range (2nd line of format) */
+          indextype->getright(), /* upper bound */
+          indextype->getleft(),  /* index adjust (3rd line) */
+          indextype->name, indextype->getright(), indextype->getleft(),
+          indextype->getleft()); /* index adjust (after #else) */
+      break;
+    case typedecl::Union:
+      (void) make_elt_ref_by_union(((uniontypedecl *)indextype)->getunionmembers());
+      fprintf(codefile,
+          "    if (index==UNDEFVAL) \n"
+          "      Error.Error(\"Indexing to %%s using an undefined value.\", name);\n"
+          "    else\n"
+          "      Error.Error(\"Funny index value %%d for %%s. (Internal Error in Type Checking.\",index, name);\n"
+          "    return array[0];\n"
+          "  }\n");
+      break;
+    case typedecl::Array:
+    case typedecl::Record:
+    case typedecl::Error_type:
+    default:
+      // the error should already be flagged. 
+    
+      // On the other hand, if this error happened, it should never
+      // have gotten here. Therefore, we will put an error here, because
+      // redundant error-checking is never a waste. --RLM
+      Error.Error("Internal: Odd value for arraydecl::elementtype;");
+      break;
+    }   
+      
       
     /* and an operator =. */
     generate_assign();
@@ -1655,18 +1730,21 @@ int make_union_indexval(stelist *unionmembers)
   return base + t->getsize();
 }
  
-int make_bit_compacted_value_assign(stelist *unionmembers)
+int make_bit_compacted_value_assign(stelist *unionmembers, const char* mu_type)
 {
   int base = 0;
   if (unionmembers->next != NULL)
-      base = make_bit_compacted_value_assign(unionmembers->next);
+      base = make_bit_compacted_value_assign(unionmembers->next,mu_type);
 
   typedecl *t= (typedecl *) unionmembers->s->getvalue();
   fprintf(codefile,
           "    if ((val >= %d) && (val <= %d))"
-          " return (mu__byte::value(val-(%d))+(%d));\n",
-          t->getleft(),
+	// BRAD: Fix here. Had to pass mu_type to this function.
+        //  " return (mu__byte::value(val-%d)+%d);\n",
+          " return (%s::value(val-%d)+%d);\n",
+	  t->getleft(),
           t->getright(),
+	  mu_type,
           t->getleft() - base,
           t->getleft() - base
       );
@@ -1783,10 +1861,12 @@ char *uniontypedecl::generate_decl()
       fprintf(codefile,
           "  int value() const\n"
           "  {\n"
-          "    int val = mu__byte::value();\n"
+          // BRAD: fix here
+          //   "    int val = mu__byte::value();\n"
+          "    int val = %s::value();\n"
           "    // val == -1 if value undefined\n"
           "    // we can return it since no enum/scalarsetid will have value -1\n"
-          "    if (val == -1) return -1;\n"
+          "    if (val == -1) return -1;\n", mu_type
           );
       make_bit_compacted_value(unionmembers);
       fprintf(codefile,
@@ -1795,19 +1875,23 @@ char *uniontypedecl::generate_decl()
           "  {\n"
           "    if (val == -1) { undefine(); return -1; }\n"
           );
-      make_bit_compacted_value_assign(unionmembers);
+      make_bit_compacted_value_assign(unionmembers,mu_type);
       fprintf(codefile,
           "  }\n"
           "  inline int indexvalue() const\n"
           "  {\n"
-          "    return mu__byte::value();\n"
-          "  };\n"
+ 	// BRAD: fix here
+        //  "    return mu__byte::value();\n"
+	 "    return %s::value();\n"
+              "  };\n", mu_type
           );
       fprintf(codefile,
           "  inline int unionassign(int val)\n"
           "  {\n"
-          "    return mu__byte::value(val);\n"
-          "  };\n"
+     //   BRAD: fix here
+     //     "    return mu__byte::value(val);\n"
+          "    return %s::value(val);\n"
+              "  };\n", mu_type
           );
     }
 
@@ -1891,8 +1975,8 @@ char *uniontypedecl::generate_decl()
       fprintf(codefile, 
           "friend int CompareWeight(%s& a, %s& b)\n"
           "{\n"
-          "  if (!a.defined()) return(b.defined() ? -1 : 0); \n"
-          "  if (!b.defined()) return(1);\n",
+          "  if (!a.defined() && b.defined()) return(-1);\n"
+          "  if (a.defined() && !b.defined()) return(1);\n",
           mu_name, mu_name
           );
 
@@ -2027,17 +2111,27 @@ char *vardecl::generate_decl()
 /********************
   code for aliasdecl
  ********************/
-
 char *aliasdecl::generate_decl()
 {
   if (!declared) {
-    if (!ref->islvalue() && ref->gettype()->issimple()) {
-      fprintf(codefile,
+    // JohnE: Fixed bug of not copying lvalues when
+    // the lvalue is not simple
+    //    if (!ref->islvalue() && ref->gettype()->issimple()) {
+    if (!ref->islvalue()) {
+      if (ref->gettype()->issimple()) {
+        fprintf(codefile,
       /* BUG: BOGUS CONST INT */  
       /* is this fixed adding  ref->gettype()->issimple() */
           "  const int %s = %s;\n",
           mu_name,
           ref->generate_code());
+      } else  {
+        fprintf(codefile," %s %s = %s;\n",
+              ref->gettype()->generate_code(),
+                mu_name,
+                ref->generate_code());
+      }
+
     }
     else {
       fprintf(codefile,"  %s& %s = %s;\n",
@@ -2220,12 +2314,12 @@ char *valparam::generate_decl()
 char *constparam::generate_decl()
 {
   if (!declared) {
-    if ( type->issimple() )
+    //    if ( type->issimple() )
       fprintf(codefile,
           "const %s& %s",
           type->generate_code(),  mu_name);
-    else
-      fprintf(codefile, "%s& %s", type->generate_code(), mu_name);
+      //    else
+      //      fprintf(codefile, "%s& %s", type->generate_code(), mu_name);
 
     declared = TRUE;
   }
