@@ -50,7 +50,7 @@ preach.beam: preach.erl
 #GCC=g++   # -O3 core dumps occasionally
 #GCC = /usr/intel/pkgs/gcc/4.5.0/bin/g++
 GCC = g++
-OFLAGS=-O2
+#OFLAGS=-O2
 
 # options (really OPTIONAL)
 CFLAGS=-Wno-deprecated -DCATCH_DIV 
@@ -76,7 +76,7 @@ CFLAGS=-Wno-deprecated -DCATCH_DIV
 	grep RULES_IN_WORLD $@
 
 %.so: %.C ${PREACH_ROOT}/MurphiEngine/include/*
-	$(GCC) -O2 -DERLANG -DCATCH_DIV -Wno-write-strings -Wno-deprecated -g -lm  -o $@ -fpic -shared $<  \
+	$(GCC) -O0 -DERLANG -DCATCH_DIV -Wno-write-strings -Wno-deprecated -g -lm  -o $@ -fpic -shared $<  \
 	-I${MURPHI_INCLUDE} \
 	-I${ERLANG_INTERFACE_INCLUDE} \
 	-I${ERLANG_ERTS_INCLUDE} \
