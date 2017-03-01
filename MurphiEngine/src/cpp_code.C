@@ -2126,7 +2126,7 @@ char *aliasdecl::generate_decl()
           mu_name,
           ref->generate_code());
       } else  {
-        fprintf(codefile," %s %s = %s;\n",
+        fprintf(codefile," const %s& %s = %s;\n",
               ref->gettype()->generate_code(),
                 mu_name,
                 ref->generate_code());
