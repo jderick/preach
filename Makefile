@@ -76,7 +76,7 @@ CFLAGS=-Wno-deprecated -DCATCH_DIV
 	grep RULES_IN_WORLD $@
 
 %.so: %.C ${PREACH_ROOT}/MurphiEngine/include/*
-	$(GCC) $(OFLAGS) -DERLANG -DCATCH_DIV -Wno-write-strings -Wno-deprecated -g -lm  -o $@ -fpic -shared $<  \
+	$(GCC) $(OFLAGS) -DERLANG -DCATCH_DIV -Wno-write-strings -Wno-deprecated -Wno-narrowing -g -lm  -o $@ -fpic -shared $<  \
 	-I${MURPHI_INCLUDE} \
 	-I${ERLANG_INTERFACE_INCLUDE} \
 	-I${ERLANG_ERTS_INCLUDE} \
