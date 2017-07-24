@@ -1741,7 +1741,7 @@ int make_bit_compacted_value_assign(stelist *unionmembers, const char* mu_type)
           "    if ((val >= %d) && (val <= %d))"
 	// BRAD: Fix here. Had to pass mu_type to this function.
         //  " return (mu__byte::value(val-%d)+%d);\n",
-          " return (%s::value(val-%d)+%d);\n",
+          " return (%s::value(val-(%d))+(%d));\n",
 	  t->getleft(),
           t->getright(),
 	  mu_type,
