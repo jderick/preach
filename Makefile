@@ -50,7 +50,7 @@ preach.beam: preach.erl
 #GCC=g++   # -O3 core dumps occasionally
 #GCC = /usr/intel/pkgs/gcc/4.5.0/bin/g++
 GCC = g++
-OFLAGS ?= -O0
+OFLAGS ?= -O2
 
 # options (really OPTIONAL)
 CFLAGS=-Wno-deprecated -DCATCH_DIV 
@@ -69,6 +69,8 @@ CFLAGS=-Wno-deprecated -DCATCH_DIV
 #	mv $@ $@.OLD
 #	mkdir -p /tmp/`basename ${PWD}`
 #	./$< -m 12000 -p6 -sym1 -tv -d /tmp/`basename ${PWD}` 
+
+.PRECIOUS: %.C
 
 %.C: %.m 
 	${MU} -c -b $<
